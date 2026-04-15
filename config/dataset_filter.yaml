@@ -1,0 +1,21 @@
+# Filtros para acotar la descarga de ACLED.
+# Estos valores se pasan como parámetros a la API de ACLED.
+# Regla: siempre aplicar al menos filtro de país Y año.
+
+filters:
+  country:
+    - "Israel"
+  year:
+    - 2023
+  # Rango de fechas derivado de los años (se construye automáticamente en el cliente)
+  # event_type:           # Descomentar para filtrar por tipo de evento
+  #   - "Battles"
+  #   - "Violence against civilians"
+  #   - "Protests"
+
+download:
+  limit: 8000             # máximo de registros por request
+  paginate: true          # si true, descarga en páginas hasta agotar resultados
+  page_size: 500          # registros por página
+  output_format: "csv"    # csv o parquet
+  output_path: "data/acled_israel_2023.csv"

@@ -1,0 +1,154 @@
+# Esquema del Knowledge Graph — ACLED Colombia
+# Este archivo es el contrato central del pipeline.
+# Todo script de construcción lo lee; nunca hardcodear labels o relaciones.
+#
+# Columnas reales de la API ACLED (verificadas):
+#   event_id_cnty, event_date, year, event_type, sub_event_type,
+#   actor1, actor2, inter1, inter2, assoc_actor_1, assoc_actor_2,
+#   country, admin1, admin2, admin3, location, latitude, longitude,
+#   geo_precision, fatalities, notes, source, source_scale, timestamp
+
+node_types:
+
+  Event:
+    label: "Event"
+    source_id_column: "event_id_cnty"       # ID único de ACLED
+    attributes:
+      - name: "event_id"
+        source_column: "event_id_cnty"
+        type: "string"
+      - name: "event_date"
+        source_column: "event_date"
+        type: "date"
+      - name: "year"
+        source_column: "year"
+        type: "integer"
+      - name: "event_type"
+        source_column: "event_type"
+        type: "string"
+      - name: "sub_event_type"
+        source_column: "sub_event_type"
+        type: "string"
+      - name: "notes"
+        source_column: "notes"
+        type: "text"                          # 'text' → candidato a embedding
+      - name: "fatalities"
+        source_column: "fatalities"
+        type: "integer"
+      - name: "source"
+        source_column: "source"
+        type: "string"
+      - name: "source_scale"
+        source_column: "source_scale"
+        type: "string"
+      - name: "time_precision"
+        source_column: "time_precision"
+        type: "integer"                       # 1=exacto, 2=aprox, 3=mes, 4=año
+    text_for_embedding:                       # campos que se concatenan para el embedding
+      - "event_type"
+      - "sub_event_type"
+      - "notes"
+
+  Actor:
+    label: "Actor"
+    source_id_column: null                    # se genera por deduplicación
+    deduplicate_on: "actor_name"
+    attributes:
+      - name: "actor_name"
+        source_column: ["actor1", "actor2"]   # se extrae de ambas columnas
+        type: "string"
+      - name: "actor_type_code"
+        source_column: ["inter1", "inter2"]   # código numérico de tipo de actor
+        type: "string"
+        # Codebook ACLED inter codes:
+        # 1=State Forces, 2=Rebel Groups, 3=Political Militias,
+        # 4=Identity Militias, 5=Rioters/Protesters, 6=Civilians,
+        # 7=External/Other Forces
+      - name: "associated_actor"
+        source_column: ["assoc_actor_1", "assoc_actor_2"]
+        type: "string"
+    text_for_embedding:
+      - "actor_name"
+
+  Location:
+    label: "Location"
+    source_id_column: null
+    deduplicate_on: ["latitude", "longitude"] # identidad geográfica
+    attributes:
+      - name: "location_name"
+        source_column: "location"
+        type: "string"
+      - name: "admin1"
+        source_column: "admin1"
+        type: "string"
+      - name: "admin2"
+        source_column: "admin2"
+        type: "string"
+      - name: "admin3"
+        source_column: "admin3"
+        type: "string"
+      - name: "country"
+        source_column: "country"
+        type: "string"
+      - name: "latitude"
+        source_column: "latitude"
+        type: "float"
+      - name: "longitude"
+        source_column: "longitude"
+        type: "float"
+      - name: "geo_precision"
+        source_column: "geo_precision"
+        type: "integer"                       # 1=exacto, 2=aprox, 3=área
+    text_for_embedding:
+      - "country"
+      - "admin1"
+      - "location_name"
+
+relationship_types:
+
+  INVOLVED_IN:
+    type: "INVOLVED_IN"
+    from_node: "Actor"
+    to_node: "Event"
+    # Se crea una relación por cada par (actorX, event)
+    extraction:
+      - actor_column: "actor1"
+        role: "perpetrator"
+      - actor_column: "actor2"
+        role: "second_party"    # puede ser víctima, oponente, etc.
+    attributes:
+      - name: "role"
+        type: "string"          # "perpetrator" | "second_party"
+
+  OCCURRED_AT:
+    type: "OCCURRED_AT"
+    from_node: "Event"
+    to_node: "Location"
+    extraction:
+      location_key: ["latitude", "longitude"]
+    attributes: []
+
+  # Relaciones inferibles en fases posteriores:
+  # ALLIED_WITH:   dos actores que aparecen juntos repetidamente en actor1+assoc_actor_1
+  # OPPOSED_TO:    actor1 vs actor2 en eventos de tipo Battles
+  # TEMPORAL_PROXIMITY: eventos en la misma área con < N días de diferencia
+
+embedding:
+  model: "sentence-transformers/all-MiniLM-L6-v2"
+  dimension: 384
+  batch_size: 64
+  # Alternativa OpenAI (requiere OPENAI_API_KEY):
+  # model: "text-embedding-3-small"
+  # dimension: 1536
+
+neo4j:
+  vector_index_name: "embedding_index"
+  similarity_function: "cosine"
+  # Un índice vectorial por tipo de nodo
+  indexes:
+    - node_label: "Event"
+      property: "embedding"
+    - node_label: "Actor"
+      property: "embedding"
+    - node_label: "Location"
+      property: "embedding"

@@ -1,0 +1,28 @@
+# Datos y utilidades
+pandas>=2.0
+requests>=2.31
+pyyaml>=6.0
+python-dotenv>=1.0
+
+# Embeddings (opción local, sin API key)
+sentence-transformers>=2.7
+torch>=2.0               # requerido por sentence-transformers
+
+# Neo4j
+neo4j>=5.14              # driver oficial — soporta vector index
+
+# Web
+fastapi>=0.111
+uvicorn[standard]>=0.29
+jinja2>=3.1
+
+# Formato de datos alternativo
+pyarrow>=14.0            # para guardar/leer Parquet
+
+# Testing y calidad
+pytest>=8.0
+ruff>=0.4
+
+# Jupyter (exploración interactiva)
+jupyter>=1.0
+ipykernel>=6.0
