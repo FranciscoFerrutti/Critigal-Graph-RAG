@@ -75,8 +75,8 @@ node_types:
     source_id_column: null
     deduplicate_on: ["latitude", "longitude"] # identidad geográfica
     attributes:
-      - name: "location_name"
-        source_column: "location"
+      - name: "country"
+        source_column: "country"
         type: "string"
       - name: "admin1"
         source_column: "admin1"
@@ -87,8 +87,8 @@ node_types:
       - name: "admin3"
         source_column: "admin3"
         type: "string"
-      - name: "country"
-        source_column: "country"
+      - name: "location_name"
+        source_column: "location"
         type: "string"
       - name: "latitude"
         source_column: "latitude"
