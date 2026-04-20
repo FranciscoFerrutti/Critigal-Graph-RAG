@@ -1,18 +1,100 @@
-# Esquema del Knowledge Graph — ACLED Colombia
+# Esquema del Knowledge Graph — ACLED Israel
 # Este archivo es el contrato central del pipeline.
 # Todo script de construcción lo lee; nunca hardcodear labels o relaciones.
 #
-# Columnas reales de la API ACLED (verificadas):
-#   event_id_cnty, event_date, year, event_type, sub_event_type,
-#   actor1, actor2, inter1, inter2, assoc_actor_1, assoc_actor_2,
-#   country, admin1, admin2, admin3, location, latitude, longitude,
-#   geo_precision, fatalities, notes, source, source_scale, timestamp
+# Columnas reales del CSV de ACLED (verificadas contra data/acled_israel_2023.csv):
+#   event_id_cnty, event_date, year, time_precision, disorder_type,
+#   event_type, sub_event_type, actor1, assoc_actor_1, inter1,
+#   actor2, assoc_actor_2, inter2, interaction, civilian_targeting,
+#   iso, region, country, admin1, admin2, admin3, location,
+#   latitude, longitude, geo_precision, source, source_scale,
+#   notes, fatalities, tags, timestamp
+#
+# CONVENCIONES DEL SCHEMA
+# -----------------------
+# - `attributes`: SIEMPRE presente. Declara qué propiedades tiene el nodo/relación
+#   y cómo se mapean. Lista vacía `[]` si la relación no tiene propiedades.
+# - `extraction`: SIEMPRE presente. Describe cómo el pipeline extrae los datos del
+#   CSV. Para nodos puede listar columnas fuente, derivaciones, etc. Para
+#   relaciones describe cómo identificar los nodos origen y destino.
+# - `source_id_column` / `deduplicate_on`: identidad del nodo. Mutuamente excluyentes.
+# - `text_for_embedding`: lista de campos a concatenar para calcular el embedding,
+#   o `null` si el nodo no requiere embedding.
 
 node_types:
 
+  Month:
+    label: "Month"
+    source_id_column: null
+    deduplicate_on: "month_id"
+    extraction:
+      source_column: "event_date"
+      # Cada Month se deriva del prefijo YYYY-MM del event_date.
+    attributes:
+      - name: "month_id"
+        type: "string"                 # YYYY-MM (derivado de event_date)
+        derived_from: "event_date"
+        format: "YYYY-MM"
+      - name: "year"
+        type: "integer"
+        derived_from: "event_date"
+        part: "year"
+      - name: "month"
+        type: "integer"                # 1-12
+        derived_from: "event_date"
+        part: "month"
+    text_for_embedding: null
+
+  EventType:
+    label: "EventType"
+    source_id_column: null
+    deduplicate_on: "name"
+    # Los nodos se extraen de dos columnas: event_type (level=primary)
+    # y sub_event_type (level=sub). El pipeline crea primero los nodos primary,
+    # luego los sub, y después construye la relación SUBTYPE_OF entre ellos
+    # usando los pares únicos del dataset.
+    extraction:
+      - source_column: "event_type"
+        level: "primary"
+      - source_column: "sub_event_type"
+        level: "sub"
+    attributes:
+      - name: "name"
+        type: "string"
+      - name: "level"
+        type: "string"                 # "primary" | "sub" — eje ortogonal a specificity_level
+      - name: "specificity_level"
+        type: "integer"
+        derived_from: "name"
+        # Cuenta los conceptos co-clasificados en el label: 1 + count("/") sobre name.
+        # Ej.: "Armed clash" => 1; "Air/drone strike" => 2;
+        #      "Remote explosive/landmine/IED" => 3.
+        # En ACLED las "/" indican co-clasificación / superposición semántica
+        # (no jerarquía taxonómica estricta).
+        formula: "1 + count('/')"
+    text_for_embedding: null
+
+  DisorderType:
+    label: "DisorderType"
+    source_id_column: null
+    deduplicate_on: "name"
+    extraction:
+      source_column: "disorder_type"
+      split_on: ";"                    # un evento puede tener varios (ej: "Political violence; Demonstrations")
+      strip: true                      # eliminar espacios antes/después de cada valor
+    attributes:
+      - name: "name"
+        type: "string"
+    text_for_embedding: null
+
   Event:
     label: "Event"
-    source_id_column: "event_id_cnty"       # ID único de ACLED
+    source_id_column: "event_id_cnty"
+    extraction:
+      # No hace falta nada extra: cada fila del CSV produce un Event identificado
+      # por event_id_cnty. Los atributos derivados (month, day) se calculan
+      # según el bloque `derived_from` de cada attribute.
+      one_per_row: true
     attributes:
       - name: "event_id"
         source_column: "event_id_cnty"
@@ -23,57 +105,76 @@ node_types:
       - name: "year"
         source_column: "year"
         type: "integer"
-      - name: "event_type"
-        source_column: "event_type"
-        type: "string"
-      - name: "sub_event_type"
-        source_column: "sub_event_type"
-        type: "string"
+      - name: "month"
+        type: "integer"                # 1-12
+        derived_from: "event_date"
+        part: "month"
+      - name: "day"
+        type: "integer"                # 1-31
+        derived_from: "event_date"
+        part: "day"
       - name: "notes"
         source_column: "notes"
-        type: "text"                          # 'text' → candidato a embedding
+        type: "text"                   # único campo embeddeable del grafo
       - name: "fatalities"
         source_column: "fatalities"
         type: "integer"
-      - name: "source"
-        source_column: "source"
-        type: "string"
-      - name: "source_scale"
-        source_column: "source_scale"
-        type: "string"
       - name: "time_precision"
         source_column: "time_precision"
-        type: "integer"                       # 1=exacto, 2=aprox, 3=mes, 4=año
-    text_for_embedding:                       # campos que se concatenan para el embedding
-      - "event_type"
-      - "sub_event_type"
+        type: "integer"                # 1=exacto, 2=aprox, 3=mes, 4=año
+    text_for_embedding:
       - "notes"
 
   Actor:
     label: "Actor"
-    source_id_column: null                    # se genera por deduplicación
+    source_id_column: null
     deduplicate_on: "actor_name"
+    extraction:
+      source_columns:                  # se extrae de las 4 columnas
+        - column: "actor1"
+        - column: "actor2"
+        - column: "assoc_actor_1"
+          split_on: ";"                # los assoc pueden traer varios separados por ";"
+          strip: true                  # ej: "Histadrut Union; Labor Group (Israel)"
+        - column: "assoc_actor_2"
+          split_on: ";"
+          strip: true
+      skip_empty: true                 # filas con valor vacío/NaN no generan nodo
     attributes:
       - name: "actor_name"
-        source_column: ["actor1", "actor2"]   # se extrae de ambas columnas
         type: "string"
-      - name: "actor_type_code"
-        source_column: ["inter1", "inter2"]   # código numérico de tipo de actor
+    text_for_embedding: null
+
+  ActorType:
+    label: "ActorType"
+    source_id_column: null
+    deduplicate_on: "name"
+    extraction:
+      source_columns:                  # solo inter1 e inter2
+        - "inter1"
+        - "inter2"
+      skip_empty: true
+    attributes:
+      - name: "name"
         type: "string"
-        # Codebook ACLED inter codes:
-        # 1=State Forces, 2=Rebel Groups, 3=Political Militias,
-        # 4=Identity Militias, 5=Rioters/Protesters, 6=Civilians,
-        # 7=External/Other Forces
-      - name: "associated_actor"
-        source_column: ["assoc_actor_1", "assoc_actor_2"]
-        type: "string"
-    text_for_embedding:
-      - "actor_name"
+        # Valores reales presentes en el CSV (Israel 2023):
+        # State forces, Political militia, Rioters, Protesters,
+        # Civilians, External/Other forces.
+      - name: "specificity_level"
+        type: "integer"
+        derived_from: "name"
+        # Mismo criterio que EventType.specificity_level: 1 + count("/") sobre name.
+        # Ej.: "Civilians" => 1; "External/Other forces" => 2.
+        formula: "1 + count('/')"
+    text_for_embedding: null
 
   Location:
     label: "Location"
     source_id_column: null
-    deduplicate_on: ["latitude", "longitude"] # identidad geográfica
+    deduplicate_on: ["latitude", "longitude"]
+    extraction:
+      one_per_row: true                # cada fila aporta una posible location;
+                                       # la deduplicación se hace por (lat, lon)
     attributes:
       - name: "country"
         source_column: "country"
@@ -98,39 +199,146 @@ node_types:
         type: "float"
       - name: "geo_precision"
         source_column: "geo_precision"
-        type: "integer"                       # 1=exacto, 2=aprox, 3=área
-    text_for_embedding:
-      - "country"
-      - "admin1"
-      - "location_name"
+        type: "integer"                # 1=exacto, 2=aprox, 3=área
+    text_for_embedding: null
+
+  Source:
+    label: "Source"
+    source_id_column: null
+    deduplicate_on: ["source", "source_scale"]
+    extraction:
+      one_per_row: true                # cada fila aporta posibles fuentes (ver split)
+      # La columna 'source' suele traer varias fuentes separadas por ";"
+      # (ej.: "Haaretz; N12; Times of Israel; Ynet"). Cada valor genera un
+      # nodo Source distinto, todos compartiendo el source_scale de esa fila.
+      source_split_on: ";"
+      source_strip: true
+    attributes:
+      - name: "source"
+        source_column: "source"
+        type: "string"
+      - name: "source_scale"
+        source_column: "source_scale"
+        type: "string"
+    text_for_embedding: null
 
 relationship_types:
+
+  OF_TYPE:
+    type: "OF_TYPE"
+    from_node: "Event"
+    to_node: "EventType"
+    # Apunta siempre al nodo hoja (sub_event_type).
+    # El tipo primario se alcanza con un hop extra vía SUBTYPE_OF.
+    extraction:
+      source_column: "sub_event_type"
+    attributes: []
+
+  SUBTYPE_OF:
+    type: "SUBTYPE_OF"
+    from_node: "EventType"             # nodo sub (level=sub)
+    to_node: "EventType"               # nodo primario (level=primary)
+    # Se construye a partir de los pares únicos (sub_event_type, event_type) del dataset.
+    extraction:
+      child_column: "sub_event_type"
+      parent_column: "event_type"
+    attributes: []
+
+  IN_MONTH:
+    type: "IN_MONTH"
+    from_node: "Event"
+    to_node: "Month"
+    extraction:
+      source_column: "event_date"
+      target_match: "month_id"         # se vincula con Month.month_id (YYYY-MM)
+      format: "YYYY-MM"
+    attributes: []
 
   INVOLVED_IN:
     type: "INVOLVED_IN"
     from_node: "Actor"
     to_node: "Event"
-    # Se crea una relación por cada par (actorX, event)
+    # Una relación por cada (actor, event) extraído de las 4 columnas de actores.
+    # Las columnas assoc_actor_* pueden traer varios actores separados por ";";
+    # cada uno genera una relación INVOLVED_IN independiente con el mismo (side, role).
+    # Se omiten filas donde la columna esté vacía o sea NaN.
     extraction:
       - actor_column: "actor1"
-        role: "perpetrator"
+        side: "primary"
+        role: "main"
+      - actor_column: "assoc_actor_1"
+        side: "primary"
+        role: "associated"
+        split_on: ";"
+        strip: true
       - actor_column: "actor2"
-        role: "second_party"    # puede ser víctima, oponente, etc.
+        side: "secondary"
+        role: "main"
+      - actor_column: "assoc_actor_2"
+        side: "secondary"
+        role: "associated"
+        split_on: ";"
+        strip: true
     attributes:
+      - name: "side"
+        type: "string"                 # "primary" (actor1/assoc_actor_1) | "secondary" (actor2/assoc_actor_2)
       - name: "role"
-        type: "string"          # "perpetrator" | "second_party"
+        type: "string"                 # "main" (actorN) | "associated" (assoc_actor_N)
 
-  OCCURRED_AT:
-    type: "OCCURRED_AT"
+  HAS_TYPE:
+    type: "HAS_TYPE"
+    from_node: "Actor"
+    to_node: "ActorType"
+    # Solo se crea cuando el CSV provee un par (actor, código) extraíble.
+    # Los actores que vienen exclusivamente de assoc_actor_1/assoc_actor_2
+    # Si un mismo actor aparece como actor1 (con inter1) y también como assoc_actor_1
+    # en otro evento, queda tipado a partir del par (actor1, inter1).
+    extraction:
+      pairs:
+        - actor_column: "actor1"
+          type_column: "inter1"
+        - actor_column: "actor2"
+          type_column: "inter2"
+      skip_empty: true
+    attributes: []
+
+  AT_LOCATION:
+    type: "AT_LOCATION"
     from_node: "Event"
     to_node: "Location"
     extraction:
-      location_key: ["latitude", "longitude"]
+      target_match: ["latitude", "longitude"]   # Location identificada por (lat, lon)
+    attributes: []
+
+  REPORTED_BY:
+    type: "REPORTED_BY"
+    from_node: "Event"
+    to_node: "Source"
+    # La columna 'source' suele contener varias fuentes separadas por ";".
+    # Cada valor genera una relación REPORTED_BY distinta hacia la Source
+    # (source_split, source_scale).
+    extraction:
+      source_column: "source"
+      split_on: ";"
+      strip: true
+      target_match: ["source", "source_scale"]  # Source identificada por el par
+    attributes: []
+
+  OF_DISORDER:
+    type: "OF_DISORDER"
+    from_node: "Event"
+    to_node: "DisorderType"
+    # Si disorder_type contiene varios valores separados por ";"
+    # (ej: "Political violence; Demonstrations") se crea una relación por valor.
+    extraction:
+      source_column: "disorder_type"
+      split_on: ";"
+      strip: true
     attributes: []
 
   # Relaciones inferibles en fases posteriores:
-  # ALLIED_WITH:   dos actores que aparecen juntos repetidamente en actor1+assoc_actor_1
-  # OPPOSED_TO:    actor1 vs actor2 en eventos de tipo Battles
+  # ALLIED_WITH:        dos actores que aparecen juntos repetidamente en actor1+assoc_actor_1
+  # OPPOSED_TO:         actor1 vs actor2 en eventos de tipo Battles
   # TEMPORAL_PROXIMITY: eventos en la misma área con < N días de diferencia
 
 embedding:
@@ -142,13 +350,13 @@ embedding:
   # dimension: 1536
 
 neo4j:
-  vector_index_name: "embedding_index"
-  similarity_function: "cosine"
-  # Un índice vectorial por tipo de nodo
-  indexes:
-    - node_label: "Event"
-      property: "embedding"
-    - node_label: "Actor"
-      property: "embedding"
-    - node_label: "Location"
-      property: "embedding"
+  # Único índice vectorial: el embedding de Event.notes.
+  # Toda búsqueda semántica entra por aquí; el resto del grafo se navega
+  # por relaciones (INVOLVED_IN, AT_LOCATION, OF_TYPE, IN_MONTH, REPORTED_BY,
+  # OF_DISORDER, HAS_TYPE, SUBTYPE_OF).
+  vector_index:
+    name: "event_notes_embedding"
+    node_label: "Event"
+    property: "embedding"
+    similarity_function: "cosine"
+    dimensions: 384
