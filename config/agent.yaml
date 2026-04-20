@@ -1,0 +1,31 @@
+# Configuración del agente conversacional y sus LLMs.
+#
+# Hay DOS roles LLM, con modelos distintos para equilibrar costo/capacidad:
+#   - planner: decide qué tool usar y orquesta la respuesta final.
+#   - text2cypher: convierte preguntas en Cypher cuando no hay query registrada.
+#
+# Cambiar de proveedor (ej: Gemini → Claude) es editar este archivo y
+# proveer la API key correspondiente en .env.
+
+provider: "google"
+
+google:
+  planner:
+    model: "gemini-2.5-pro"
+    temperature: 0.2
+  text2cypher:
+    model: "gemini-2.5-flash"
+    temperature: 0.0                    # determinístico para código
+  api_key_env: "GOOGLE_API_KEY"
+
+# Parámetros de retrieval para la tool similarity_search
+retrieval:
+  top_k: 10                             # nodos Event más cercanos a recuperar
+  similarity_threshold: 0.5             # umbral mínimo de similitud coseno
+  neighbor_depth: 2                     # saltos a expandir desde cada Event
+
+# Paths a otros configs que el agente consume
+paths:
+  graph_schema: "config/graph_schema.yaml"
+  embeddings: "config/embeddings.yaml"
+  cypher_library: "config/cypher_library.yaml"

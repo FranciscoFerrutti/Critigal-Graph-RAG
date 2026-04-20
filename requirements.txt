@@ -3,21 +3,27 @@ pandas>=2.0
 requests>=2.31
 pyyaml>=6.0
 python-dotenv>=1.0
-
-# Embeddings (opción local, sin API key)
-sentence-transformers>=2.7
-torch>=2.0               # requerido por sentence-transformers
+pyarrow>=14.0                    # parquet de nodos/relaciones/embeddings
 
 # Neo4j
-neo4j>=5.14              # driver oficial — soporta vector index
+neo4j>=5.14                      # driver oficial (soporta vector index)
 
-# Web
+# LangChain como capa transversal de abstracción
+langchain>=0.3
+langchain-core>=0.3
+langchain-google-genai>=2.0      # Gemini (embeddings + chat) — proveedor default
+langchain-neo4j>=0.3             # Neo4jVector, GraphCypherQAChain
+langchain-huggingface>=0.1       # fallback local de embeddings
+langgraph>=0.2                   # agente planificador (etapa 3)
+
+# Embeddings locales (usados solo si se selecciona provider=huggingface)
+sentence-transformers>=2.7
+torch>=2.0
+
+# Web (etapa 3)
 fastapi>=0.111
 uvicorn[standard]>=0.29
 jinja2>=3.1
-
-# Formato de datos alternativo
-pyarrow>=14.0            # para guardar/leer Parquet
 
 # Testing y calidad
 pytest>=8.0

@@ -1,0 +1,46 @@
+# Configuración del proveedor de embeddings.
+#
+# La elección del proveedor se hace ACÁ, no en código. Cambiar de Google a
+# HuggingFace (o futuro OpenAI) es editar este archivo y, si corresponde,
+# definir la API key en .env.
+#
+# Si se cambia el proveedor o la `dimensions`, hay que:
+#   1) eliminar el índice vectorial existente en Neo4j (desde la consola web)
+#   2) re-ejecutar scripts/04_embeddings.py y scripts/05_load_neo4j.py
+
+provider: "google"
+
+# -----------------------------------------------------------------------------
+# Config del proveedor activo
+# -----------------------------------------------------------------------------
+google:
+  # Modelo de embeddings de Gemini. Soporta Matryoshka: 768 / 1536 / 3072.
+  # 1536 es el punto de balance: buena calidad sin inflar el índice vectorial.
+  model: "gemini-embedding-001"
+  dimensions: 1536
+  # La API admite hasta 100 textos por request, pero el free tier tiene un
+  # RPM bajo y el SDK internamente sub-batchea. 20 + sleep entre batches
+  # funciona estable en free tier. Subir si tenés cuota paga.
+  batch_size: 20
+  api_key_env: "GOOGLE_API_KEY"
+  # task_type se aplica automáticamente por el provider:
+  #   - retrieval_document → al embeber Event.notes (documento)
+  #   - retrieval_query    → al embeber la pregunta del usuario
+  # gemini-embedding-001 es cross-lingual (ES/EN), necesario porque las notes
+  # están en inglés y las preguntas pueden venir en español.
+
+# -----------------------------------------------------------------------------
+# Configs inactivos (sirven como ejemplo / swap rápido)
+# -----------------------------------------------------------------------------
+huggingface:
+  # Fallback local sin API. Multilingüe.
+  model: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+  dimensions: 384
+  batch_size: 64
+  api_key_env: null                     # no requiere key
+
+# openai:
+#   model: "text-embedding-3-small"
+#   dimensions: 1536
+#   batch_size: 100
+#   api_key_env: "OPENAI_API_KEY"

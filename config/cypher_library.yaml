@@ -1,0 +1,187 @@
+# Biblioteca de queries Cypher predefinidas.
+#
+# El agente tiene una tool `cypher_query` que elige una de estas queries
+# en base a la pregunta del usuario. El LLM planificador usa los campos
+# `description` y `when_to_use` para decidir si aplica o si corresponde
+# caer en el fallback `text2cypher`.
+#
+# Campos por query:
+#   id            — slug único, snake_case
+#   description   — qué calcula la query (resumen en 1 línea)
+#   when_to_use   — texto explicativo para el LLM: bajo qué tipo de preguntas conviene
+#                   usar esta query. Da ejemplos concretos.
+#   parameters    — lista de parámetros tipados. El LLM los completa desde la pregunta.
+#                   name, type, description, required (default: true), default (opcional)
+#   returns       — breve descripción de qué columnas devuelve la query.
+#   cypher        — texto Cypher parametrizado con $param_name.
+#
+# Mantener las queries "chicas y composables". Preferir contar, listar,
+# agregar; que el planner decida cómo armar la respuesta final.
+
+queries:
+
+  - id: "count_events_by_country_month"
+    description: "Cuenta eventos en un país y un mes YYYY-MM específicos."
+    when_to_use: |
+      Preguntas del tipo "¿Cuántos eventos hubo en <país> durante <mes> de <año>?".
+      El país debe ser exacto como aparece en Location.country (ej: 'Israel').
+      El mes se pasa como 'YYYY-MM'.
+    parameters:
+      - name: "country"
+        type: "string"
+        description: "Nombre del país tal como aparece en Location.country"
+        required: true
+      - name: "month_id"
+        type: "string"
+        description: "Mes en formato YYYY-MM (ej: '2023-10')"
+        required: true
+    returns: "event_count: INT"
+    cypher: |
+      MATCH (e:Event)-[:IN_MONTH]->(:Month {month_id: $month_id})
+      MATCH (e)-[:AT_LOCATION]->(l:Location)
+      WHERE l.country = $country
+      RETURN count(DISTINCT e) AS event_count
+
+  - id: "sum_fatalities_by_country_year"
+    description: "Suma las fatalidades registradas en un país durante un año."
+    when_to_use: |
+      Preguntas tipo "¿Cuántas fatalidades hubo en <país> en <año>?".
+      Funciona sobre Event.fatalities. Si el usuario pide por región (ej: Gaza,
+      Cisjordania), usar admin1 en lugar de country — ver query
+      sum_fatalities_by_admin1_year.
+    parameters:
+      - name: "country"
+        type: "string"
+        description: "Nombre del país"
+        required: true
+      - name: "year"
+        type: "integer"
+        description: "Año (ej: 2023)"
+        required: true
+    returns: "total_fatalities: INT"
+    cypher: |
+      MATCH (e:Event)-[:AT_LOCATION]->(l:Location)
+      WHERE l.country = $country AND e.year = $year
+      RETURN coalesce(sum(e.fatalities), 0) AS total_fatalities
+
+  - id: "sum_fatalities_by_admin1_year"
+    description: "Suma de fatalidades filtrando por admin1 (región: Gaza, West Bank, etc.) y año."
+    when_to_use: |
+      Para Gaza / Cisjordania / regiones específicas usar este, no country.
+      Preguntas tipo "¿Cuántas fatalidades hubo en Gaza en 2024?".
+    parameters:
+      - name: "admin1"
+        type: "string"
+        description: "Nombre de la región tal como aparece en Location.admin1 (ej: 'Gaza Strip', 'West Bank')"
+        required: true
+      - name: "year"
+        type: "integer"
+        description: "Año"
+        required: true
+    returns: "total_fatalities: INT"
+    cypher: |
+      MATCH (e:Event)-[:AT_LOCATION]->(l:Location)
+      WHERE l.admin1 = $admin1 AND e.year = $year
+      RETURN coalesce(sum(e.fatalities), 0) AS total_fatalities
+
+  - id: "top_actors_by_event_count"
+    description: "Top N actores con más apariciones en eventos dentro de una región y año."
+    when_to_use: |
+      Preguntas de ranking tipo "¿Qué actores tuvieron más actividad en <región> en <año>?"
+      o "¿Quién registró más interacciones en Cisjordania durante 2023?".
+      Cuenta apariciones vía INVOLVED_IN (cualquier side/role).
+    parameters:
+      - name: "admin1"
+        type: "string"
+        description: "Región (Location.admin1)"
+        required: true
+      - name: "year"
+        type: "integer"
+        description: "Año"
+        required: true
+      - name: "top_n"
+        type: "integer"
+        description: "Cantidad de actores a retornar"
+        required: false
+        default: 5
+    returns: "actor_name: STRING, event_count: INT"
+    cypher: |
+      MATCH (a:Actor)-[:INVOLVED_IN]->(e:Event)-[:AT_LOCATION]->(l:Location)
+      WHERE l.admin1 = $admin1 AND e.year = $year
+      RETURN a.actor_name AS actor_name, count(DISTINCT e) AS event_count
+      ORDER BY event_count DESC
+      LIMIT $top_n
+
+  - id: "events_by_event_type_period"
+    description: "Cuenta eventos de un tipo específico (event_type primario o sub_event_type) en un rango de fechas y región."
+    when_to_use: |
+      Preguntas tipo "¿Cuántos eventos de tipo 'Battles' hubo en Israel en 2023?"
+      o "¿Cuántos 'Explosions/Remote violence' en Gaza entre octubre y diciembre 2023?".
+      El parámetro `event_type_name` puede ser primary o sub; la query hace fuzzy match via OF_TYPE + SUBTYPE_OF.
+    parameters:
+      - name: "event_type_name"
+        type: "string"
+        description: "Nombre del tipo o subtipo (ej: 'Battles', 'Armed clash')"
+        required: true
+      - name: "start_date"
+        type: "string"
+        description: "Fecha de inicio ISO (YYYY-MM-DD)"
+        required: true
+      - name: "end_date"
+        type: "string"
+        description: "Fecha de fin ISO (YYYY-MM-DD)"
+        required: true
+      - name: "admin1"
+        type: "string"
+        description: "Región opcional para filtrar (si se omite, cuenta a nivel país)"
+        required: false
+        default: null
+    returns: "event_count: INT"
+    cypher: |
+      MATCH (e:Event)-[:OF_TYPE]->(sub:EventType)
+      OPTIONAL MATCH (sub)-[:SUBTYPE_OF]->(primary:EventType)
+      WITH e, sub, primary
+      WHERE (sub.name = $event_type_name OR primary.name = $event_type_name)
+        AND date(e.event_date) >= date($start_date)
+        AND date(e.event_date) <= date($end_date)
+      OPTIONAL MATCH (e)-[:AT_LOCATION]->(l:Location)
+      WHERE $admin1 IS NULL OR l.admin1 = $admin1
+      RETURN count(DISTINCT e) AS event_count
+
+  - id: "actors_co_occurring_with"
+    description: "Actores que aparecieron en los mismos eventos que un actor dado."
+    when_to_use: |
+      Preguntas tipo "¿Con qué actores interactuó <X>?" o
+      "¿Qué actores aparecen junto a FDI en Gaza en 2024?".
+      Devuelve la frecuencia de co-aparición, ordenada desc.
+    parameters:
+      - name: "actor_name"
+        type: "string"
+        description: "Nombre exacto del actor (Actor.actor_name)"
+        required: true
+      - name: "admin1"
+        type: "string"
+        description: "Región opcional (Location.admin1)"
+        required: false
+        default: null
+      - name: "year"
+        type: "integer"
+        description: "Año opcional"
+        required: false
+        default: null
+      - name: "top_n"
+        type: "integer"
+        description: "Cantidad máxima de actores a devolver"
+        required: false
+        default: 10
+    returns: "co_actor: STRING, co_occurrences: INT"
+    cypher: |
+      MATCH (a:Actor {actor_name: $actor_name})-[:INVOLVED_IN]->(e:Event)<-[:INVOLVED_IN]-(b:Actor)
+      WHERE b.actor_name <> $actor_name
+      OPTIONAL MATCH (e)-[:AT_LOCATION]->(l:Location)
+      WITH a, b, e, l
+      WHERE ($admin1 IS NULL OR l.admin1 = $admin1)
+        AND ($year IS NULL OR e.year = $year)
+      RETURN b.actor_name AS co_actor, count(DISTINCT e) AS co_occurrences
+      ORDER BY co_occurrences DESC
+      LIMIT $top_n

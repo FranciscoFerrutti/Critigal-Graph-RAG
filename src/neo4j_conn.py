@@ -12,7 +12,13 @@ Si ninguno está configurado se lanza EnvironmentError.
 import logging
 import os
 
+from dotenv import load_dotenv
 from neo4j import Auth, GraphDatabase, Driver
+
+# Forzar la carga del .env apenas se importa el módulo. override=True para que
+# el .env gane sobre posibles env vars viejas del sistema (el mismo patrón
+# que usamos en acled_client.py).
+load_dotenv(override=True)
 
 logger = logging.getLogger(__name__)
 

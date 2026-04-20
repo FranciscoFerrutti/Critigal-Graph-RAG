@@ -341,22 +341,20 @@ relationship_types:
   # OPPOSED_TO:         actor1 vs actor2 en eventos de tipo Battles
   # TEMPORAL_PROXIMITY: eventos en la misma área con < N días de diferencia
 
-embedding:
-  model: "sentence-transformers/all-MiniLM-L6-v2"
-  dimension: 384
-  batch_size: 64
-  # Alternativa OpenAI (requiere OPENAI_API_KEY):
-  # model: "text-embedding-3-small"
-  # dimension: 1536
+# La configuración de embeddings vive en config/embeddings.yaml
+# (provider, modelo, dimensión). Se mantiene fuera de este archivo para
+# poder cambiar de proveedor sin tocar la definición estructural del grafo.
 
 neo4j:
   # Único índice vectorial: el embedding de Event.notes.
   # Toda búsqueda semántica entra por aquí; el resto del grafo se navega
   # por relaciones (INVOLVED_IN, AT_LOCATION, OF_TYPE, IN_MONTH, REPORTED_BY,
   # OF_DISORDER, HAS_TYPE, SUBTYPE_OF).
+  #
+  # `dimensions` NO aparece aquí: se toma de config/embeddings.yaml al
+  # momento de crear el índice.
   vector_index:
     name: "event_notes_embedding"
     node_label: "Event"
     property: "embedding"
     similarity_function: "cosine"
-    dimensions: 384
