@@ -22,6 +22,9 @@ venv/
 env/
 .env/
 
+# Poetry
+# poetry.lock se commitea para builds reproducibles
+
 # .md
 *.md
 !README.md

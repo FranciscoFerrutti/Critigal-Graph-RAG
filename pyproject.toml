@@ -1,0 +1,55 @@
+[tool.poetry]
+name = "criticalgraphrag"
+version = "0.1.0"
+description = "Chatbot de analisis del conflicto Israel/Palestina con Knowledge Graph + RAG"
+authors = ["CriticalGraphRAG"]
+readme = "README.md"
+packages = [{include = "src"}]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.13"
+
+# Datos y utilidades
+pandas = ">=2.0"
+requests = ">=2.31"
+pyyaml = ">=6.0"
+python-dotenv = ">=1.0"
+pyarrow = ">=14.0"
+
+# Neo4j
+neo4j = ">=5.14"
+
+# LangChain
+langchain = ">=0.3"
+langchain-core = ">=0.3"
+langchain-google-genai = ">=2.0"
+langchain-neo4j = ">=0.3"
+langchain-huggingface = ">=0.1"
+langgraph = ">=0.2"
+
+# Embeddings locales (fallback)
+sentence-transformers = ">=2.7"
+torch = ">=2.0"
+
+# Web
+fastapi = ">=0.111"
+uvicorn = {version = ">=0.29", extras = ["standard"]}
+jinja2 = ">=3.1"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.0"
+ruff = ">=0.4"
+
+[tool.poetry.group.notebooks.dependencies]
+jupyter = ">=1.0"
+ipykernel = ">=6.0"
+matplotlib = ">=3.7"
+seaborn = ">=0.12"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
