@@ -505,7 +505,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="EDA del dataset ACLED")
     parser.add_argument(
         "--input",
-        default="data/acled_colombia_2023_2024.csv",
+        default="data/acled_israel_2023.csv",
         help="Ruta al CSV de datos descargados",
     )
     parser.add_argument(
