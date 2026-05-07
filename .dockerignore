@@ -1,0 +1,54 @@
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.env
+.env.local
+
+# Tests
+.pytest_cache/
+htmlcov/
+.coverage
+.tox/
+
+# Logs
+*.log
+
+# Notebooks (opcional - comentar si quieres incluirlos)
+.ipynb_checkpoints/
+*.ipynb
+
+# Git
+.git/
+.gitignore
+
+# Documentación
+README*.md
+EXAMPLES.py
+test_chatbot.py
+Makefile
+
+# Claude
+claude/
+.claude/

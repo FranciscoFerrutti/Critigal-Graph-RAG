@@ -4,6 +4,7 @@ requests>=2.31
 pyyaml>=6.0
 python-dotenv>=1.0
 pyarrow>=14.0                    # parquet de nodos/relaciones/embeddings
+pydantic
 
 # Neo4j
 neo4j>=5.14                      # driver oficial (soporta vector index)
