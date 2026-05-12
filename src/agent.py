@@ -16,7 +16,7 @@ import logging
 import os
 from typing import Any
 
-from langchain_core.language_model import BaseLLM
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.tools import StructuredTool
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -193,7 +193,7 @@ class ChatbotAgent:
 
         logger.info(f"✓ Agente inicializado con {len(self.tools)} tool(s)")
 
-    def _build_llm(self, model: str, temperature: float) -> BaseLLM:
+    def _build_llm(self, model: str, temperature: float) -> BaseChatModel:
         """Construye la instancia de Google Generative AI LLM."""
         return ChatGoogleGenerativeAI(
             model=model,
