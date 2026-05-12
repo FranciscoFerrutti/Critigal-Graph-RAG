@@ -204,10 +204,11 @@ if __name__ == "__main__":
     host = os.getenv("SERVER_HOST", "0.0.0.0")
     port = int(os.getenv("PORT", os.getenv("SERVER_PORT", "8000")))
 
+    reload = os.getenv("UVICORN_RELOAD", "false").lower() == "true"
     logger.info(f"🚀 Iniciando servidor en {host}:{port}")
     uvicorn.run(
         "server:app",
         host=host,
         port=port,
-        reload=os.getenv("ENVIRONMENT", "development") == "development",
+        reload=reload,
     )

@@ -17,11 +17,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar archivos de requisitos
-COPY requirements.txt ./
+COPY requirements-prod.txt ./
 
 # Instalar dependencias Python
 RUN pip install --upgrade pip && \
-    pip install -r requirements.txt
+    pip install -r requirements-prod.txt
 
 # Copiar fuentes
 COPY src ./src
@@ -29,8 +29,8 @@ COPY config ./config
 COPY server.py .
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000/health', timeout=2)"
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
 
 # Exponer puerto
 EXPOSE 8000
