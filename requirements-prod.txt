@@ -1,0 +1,25 @@
+# Producción — excluye torch/sentence-transformers (solo necesarios para provider=huggingface)
+
+# Core
+pandas>=2.0
+requests>=2.31
+pyyaml>=6.0
+python-dotenv>=1.0
+pyarrow>=14.0
+pydantic
+
+# Neo4j
+neo4j>=5.14
+
+# LangChain
+langchain>=0.3
+langchain-core>=0.3
+langchain-google-genai>=2.0
+langchain-neo4j>=0.3
+langchain-huggingface>=0.1
+langgraph>=0.2
+
+# Web
+fastapi>=0.111
+uvicorn[standard]>=0.29
+jinja2>=3.1

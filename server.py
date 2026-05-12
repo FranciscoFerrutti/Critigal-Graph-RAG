@@ -202,7 +202,7 @@ if __name__ == "__main__":
     # Por defecto, correr en localhost:8000
     # Cambiar host/port según necesidad
     host = os.getenv("SERVER_HOST", "0.0.0.0")
-    port = int(os.getenv("SERVER_PORT", "8000"))
+    port = int(os.getenv("PORT", os.getenv("SERVER_PORT", "8000")))
 
     logger.info(f"🚀 Iniciando servidor en {host}:{port}")
     uvicorn.run(
