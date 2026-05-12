@@ -8,7 +8,8 @@ WORKDIR /app
 # Variables de entorno
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app
 
 # Instalar dependencias del sistema (si es necesario)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -16,11 +17,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar archivos de requisitos
-COPY requirements.txt pyproject.toml ./
+COPY requirements.txt ./
 
 # Instalar dependencias Python
-RUN pip install --upgrade pip setuptools wheel && \
-    pip install -e .
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt
 
 # Copiar fuentes
 COPY src ./src

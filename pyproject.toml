@@ -3,7 +3,6 @@ name = "criticalgraphrag"
 version = "0.1.0"
 description = "Chatbot de analisis del conflicto Israel/Palestina con Knowledge Graph + RAG"
 authors = ["CriticalGraphRAG"]
-readme = "README.md"
 packages = [{include = "src"}]
 
 [tool.poetry.dependencies]
