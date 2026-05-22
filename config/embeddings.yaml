@@ -18,10 +18,10 @@ google:
   # 1536 es el punto de balance: buena calidad sin inflar el índice vectorial.
   model: "gemini-embedding-001"
   dimensions: 1536
-  # La API admite hasta 100 textos por request, pero el free tier tiene un
-  # RPM bajo y el SDK internamente sub-batchea. 20 + sleep entre batches
-  # funciona estable en free tier. Subir si tenés cuota paga.
-  batch_size: 20
+  # La API admite hasta 100 textos por request (1 request HTTP por batch).
+  # 100 es óptimo: minimiza RPD. El rate limiter del script 04 respeta
+  # TPM (30K/min) y RPM (100/min) con ventanas deslizantes.
+  batch_size: 100
   api_key_env: "GOOGLE_API_KEY"
   # task_type se aplica automáticamente por el provider:
   #   - retrieval_document → al embeber Event.notes (documento)

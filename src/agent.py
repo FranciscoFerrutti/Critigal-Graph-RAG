@@ -26,6 +26,7 @@ from pydantic import BaseModel
 
 from src.config import load_yaml, resolve_api_key
 from src.schema import GraphSchema
+from src.tools.cypher_query import build_cypher_query_tool
 from src.tools.similarity_search import build_similarity_search_tool
 
 logger = logging.getLogger(__name__)
@@ -59,10 +60,24 @@ def _build_tools(
     """
     Construye la lista de tools disponibles para el agente.
 
-    Por ahora: similarity_search está totalmente implementada.
-    Las demás (cypher_query, text2cypher) están en scaffolding.
+    Tools activas:
+      - cypher_query: ejecuta queries predefinidas del cypher_library.yaml.
+      - similarity_search: búsqueda vectorial sobre Event.notes.
+
+    `text2cypher` queda como scaffolding (mejora futura).
     """
     tools: list[StructuredTool] = []
+
+    # Cypher query: catálogo de queries predefinidas
+    try:
+        library_path = agent_config.get("paths", {}).get(
+            "cypher_library", "config/cypher_library.yaml"
+        )
+        cypher_query = build_cypher_query_tool(library_path=library_path)
+        tools.append(cypher_query)
+        logger.info("✓ Tool 'cypher_query' cargada")
+    except Exception as e:
+        logger.warning(f"⚠ No se pudo cargar cypher_query: {e}")
 
     # Similarity search: búsqueda vectorial sobre Event.notes
     try:
@@ -76,10 +91,6 @@ def _build_tools(
     except Exception as e:
         logger.warning(f"⚠ No se pudo cargar similarity_search: {e}")
 
-    # TODO (Etapa 3):
-    # - cypher_query: ejecutar queries predefinidas
-    # - text2cypher: generar Cypher dinámico con LLM
-
     return tools
 
 
@@ -89,44 +100,60 @@ def _build_tools(
 
 SYSTEM_PROMPT_ES = """
 Eres un asistente experto en análisis de conflictos y datos de eventos ACLED.
-Tu objetivo es responder preguntas sobre eventos de protesta, violencia y activismo.
+El dataset cargado cubre eventos en Israel durante 2023 (4259 eventos, 6 distritos:
+HaDarom, HaMerkaz, HaZafon, Haifa, Jerusalem, Tel Aviv).
 
 REGLAS CRÍTICAS:
-1. Responde SOLO basándote en los resultados que las tools devuelven.
-2. No inventess información que no esté en los resultados.
-3. Si una herramienta devuelve resultados, úsalos. Si no hay resultados, responde:
-   "Lo siento, no encontré eventos que se ajusten a tu pregunta. Intenta reformularla."
-4. Si ninguna tool es aplicable (la pregunta es fuera de dominio), responde:
-   "Lo siento, esa pregunta está fuera de mi área de expertise. Solo puedo responder
-   sobre eventos de protesta, violencia y activismo documentados en ACLED."
-5. Siempre responde en el mismo idioma que se te hizo la pregunta.
-6. Resume los resultados de forma clara y estructurada.
+1. Responde SOLO basándote en los resultados que las tools devuelven. No inventes.
+2. Para preguntas factuales (conteos, sumas, rankings, comparaciones temporales),
+   USA `cypher_query`: elegí un `query_id` del catálogo y completá `parameters`.
+3. Para preguntas descriptivas o de búsqueda por contenido ("¿qué pasó cuando…?",
+   "describí los eventos en…"), USA `similarity_search`.
+4. Si una tool devuelve `[{"error": "..."}]`, leé el error y reintentá con
+   `query_id` válido o parámetros corregidos. Si tras dos intentos no resolvés,
+   cambiá de tool o respondé honestamente que no podés.
+5. Si la tool devuelve `[{"info": "Sin resultados."}]`, respondé:
+   "No encontré datos para esa consulta en el dataset."
+6. Si la pregunta es fuera de dominio, respondé:
+   "Esa pregunta está fuera de mi área de expertise. Solo respondo sobre eventos
+   ACLED (Israel 2023)."
+7. Respondé en el mismo idioma que la pregunta.
+8. Resumí los resultados de forma clara y estructurada (números con unidad,
+   listas con bullets cuando aplique).
 
 TOOLS DISPONIBLES:
-- similarity_search: Para buscar eventos por descripción de contenido.
-  Úsala cuando la pregunta pida describir eventos, buscar por contexto,
-  o cuando no haya una query Cypher precisa disponible.
+- cypher_query: Query Cypher predefinida del catálogo. Para conteos, sumas,
+  rankings y comparaciones temporales con patrón conocido. Args: query_id, parameters.
+- similarity_search: Búsqueda vectorial sobre Event.notes. Para preguntas
+  descriptivas / búsqueda semántica por contenido. Args: query, top_k.
 """
 
 SYSTEM_PROMPT_EN = """
 You are an expert assistant in conflict analysis and ACLED event data.
-Your goal is to answer questions about protest events, violence, and activism.
+The loaded dataset covers events in Israel during 2023 (4259 events, 6 districts:
+HaDarom, HaMerkaz, HaZafon, Haifa, Jerusalem, Tel Aviv).
 
 CRITICAL RULES:
-1. Answer ONLY based on the results that tools return.
-2. Do not invent information that is not in the results.
-3. If a tool returns results, use them. If there are no results, respond:
-   "I'm sorry, I couldn't find events matching your question. Please try rephrasing it."
-4. If no tool is applicable (question out of domain), respond:
-   "I'm sorry, that question is outside my area of expertise. I can only answer
-   about protest, violence, and activism events documented in ACLED."
-5. Always respond in the same language as the question was asked.
-6. Summarize results clearly and in a structured format.
+1. Answer ONLY based on what tools return. Do not invent.
+2. For factual questions (counts, sums, rankings, time comparisons),
+   USE `cypher_query`: pick a `query_id` from the catalog and fill `parameters`.
+3. For descriptive or content search questions ("what happened when…?",
+   "describe the events in…"), USE `similarity_search`.
+4. If a tool returns `[{"error": "..."}]`, read the error and retry with a
+   valid query_id or corrected params. If unresolved after two tries,
+   switch tools or honestly say you cannot answer.
+5. If the tool returns `[{"info": "Sin resultados."}]`, answer:
+   "I couldn't find data for that query in the dataset."
+6. If the question is out of domain, answer:
+   "That question is outside my expertise. I only answer ACLED events (Israel 2023)."
+7. Answer in the same language as the question.
+8. Summarize clearly (numbers with units, bullets for lists when applicable).
 
 AVAILABLE TOOLS:
-- similarity_search: To search events by content description.
-  Use it when the question asks to describe events, search by context,
-  or when there is no precise Cypher query available.
+- cypher_query: Predefined Cypher from the catalog. For counts, sums, rankings,
+  time comparisons with known patterns. Args: query_id, parameters.
+- similarity_search: Vector search over Event.notes. For descriptive /
+  semantic content questions. Args: query, top_k.
 """
 
 
@@ -263,31 +290,62 @@ class ChatbotAgent:
 
     def _process_message(self, state: AgentState) -> dict[str, Any]:
         """
-        Nodo del grafo: procesa el mensaje y decide qué tool usar.
+        Nodo del grafo: procesa el mensaje y orquesta la respuesta.
 
-        El LLM recibe el mensaje del usuario y, mediante prompt engineering,
-        describe qué tool sería la mejor opción.
+        Dos modos:
+          - Primera iteración (sin ToolMessages aún): bind tools y dejar que el
+            planner decida qué tool usar.
+          - Segunda iteración (ya hay ToolMessages): NO reenviar el historial
+            (gemini-2.5-flash devuelve AIMessage con content="" + tool_calls,
+            cuyo segundo envío rompe con `contents are required`). En su lugar,
+            armamos un prompt nuevo con la pregunta original + el resultado
+            crudo de la tool y pedimos síntesis sin tools.
         """
-        user_msg = state.messages[-1]
-        user_text = user_msg.content if isinstance(user_msg.content, str) else str(user_msg.content)
+        # Pregunta original (primer HumanMessage).
+        user_text = ""
+        for m in state.messages:
+            if m.__class__.__name__ == "HumanMessage":
+                user_text = m.content if isinstance(m.content, str) else str(m.content)
+                break
 
-        # Detectar idioma
         language = _detect_language(user_text)
         system_prompt = _get_system_prompt(language)
 
-        # Bind tools al LLM
-        if self.tools:
-            llm_with_tools = self.planner_llm.bind_tools(self.tools)
+        # Resultados de tools acumulados en este turno.
+        tool_msgs = [m for m in state.messages if m.__class__.__name__ == "ToolMessage"]
+        tool_calls_seen = []
+        for m in state.messages:
+            calls = getattr(m, "tool_calls", None) or []
+            for tc in calls:
+                tool_calls_seen.append(
+                    tc if isinstance(tc, dict) else {"name": getattr(tc, "name", ""), "args": getattr(tc, "args", {})}
+                )
+
+        if not tool_msgs:
+            # === Primera iteración: planner con tools ===
+            llm_with_tools = self.planner_llm.bind_tools(self.tools) if self.tools else self.planner_llm
+            messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_text)]
+            response = llm_with_tools.invoke(messages)
         else:
-            llm_with_tools = self.planner_llm
+            # === Síntesis: pregunta + resultado(s) de tool(s) → respuesta ===
+            tool_context_lines = []
+            for tc, tm in zip(tool_calls_seen, tool_msgs):
+                tool_context_lines.append(
+                    f"Tool `{tc.get('name','?')}` llamada con args={tc.get('args',{})}\n"
+                    f"Resultado: {tm.content}"
+                )
+            tool_context = "\n\n".join(tool_context_lines) or "(sin resultados de tool)"
+            synth_user = (
+                f"Pregunta original del usuario:\n{user_text}\n\n"
+                f"Resultado(s) de la(s) tool(s):\n{tool_context}\n\n"
+                f"Generá una respuesta concisa y clara basada SOLO en estos resultados. "
+                f"Si el resultado es numérico, expresalo con la unidad implícita. "
+                f"Si es una lista, formateala con bullets. "
+                f"Respondé en el mismo idioma que la pregunta."
+            )
+            messages = [SystemMessage(content=system_prompt), HumanMessage(content=synth_user)]
+            response = self.planner_llm.invoke(messages)
 
-        # Construir messages: system + historial
-        messages = [SystemMessage(content=system_prompt)] + state.messages
-
-        # Invocar LLM
-        response = llm_with_tools.invoke(messages)
-
-        # Actualizar state con la respuesta del LLM
         new_messages = state.messages + [response]
         return {"messages": new_messages}
 
@@ -326,28 +384,45 @@ class ChatbotAgent:
             Respuesta del agente (en el idioma de la pregunta).
         """
         try:
-            # Construir state inicial
-            initial_state = AgentState(messages=[HumanMessage(content=user_message)])
-
-            # Invocar grafo
-            final_state = self.runnable.invoke(initial_state)
-
-            # Extraer respuesta
-            response = final_state.get("response") or final_state.get("error", "")
-            if not response:
-                # Fallback
-                response = "No se pudo procesar tu pregunta."
-
-            return response
-
+            return self.invoke_trace(user_message)["response"]
         except Exception as e:
             logger.error(f"Error en agente: {e}", exc_info=True)
-            # Determinar idioma para respuesta de error
             language = _detect_language(user_message)
             if language == "es":
                 return f"Lo siento, hubo un error procesando tu pregunta: {str(e)}"
             else:
                 return f"I'm sorry, there was an error processing your question: {str(e)}"
+
+    def invoke_trace(self, user_message: str) -> dict[str, Any]:
+        """
+        Variante de `invoke` que devuelve también la traza de tools llamadas.
+
+        Returns:
+            dict con:
+              - response: str
+              - tool_calls: list[{"name": str, "args": dict}]
+              - messages_count: int
+        """
+        initial_state = AgentState(messages=[HumanMessage(content=user_message)])
+        final_state = self.runnable.invoke(initial_state)
+
+        response = final_state.get("response") or final_state.get("error", "") or "No se pudo procesar tu pregunta."
+
+        tool_calls: list[dict[str, Any]] = []
+        for msg in final_state.get("messages", []):
+            calls = getattr(msg, "tool_calls", None) or []
+            for tc in calls:
+                # langchain ToolCall puede ser dict o objeto
+                if isinstance(tc, dict):
+                    tool_calls.append({"name": tc.get("name", ""), "args": tc.get("args", {})})
+                else:
+                    tool_calls.append({"name": getattr(tc, "name", ""), "args": getattr(tc, "args", {})})
+
+        return {
+            "response": response,
+            "tool_calls": tool_calls,
+            "messages_count": len(final_state.get("messages", [])),
+        }
 
 
 # =============================================================================

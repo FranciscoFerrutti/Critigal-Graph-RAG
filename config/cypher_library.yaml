@@ -185,3 +185,196 @@ queries:
       RETURN b.actor_name AS co_actor, count(DISTINCT e) AS co_occurrences
       ORDER BY co_occurrences DESC
       LIMIT $top_n
+
+  - id: "sum_fatalities_by_country_date"
+    description: "Suma de fatalidades en un país en una fecha exacta (YYYY-MM-DD)."
+    when_to_use: |
+      Preguntas tipo "¿Cuántas fatalidades hubo en <país> el <fecha>?".
+      La fecha se compara contra Event.event_date (tipo date).
+    parameters:
+      - name: "country"
+        type: "string"
+        description: "Nombre del país (Location.country)"
+        required: true
+      - name: "event_date"
+        type: "string"
+        description: "Fecha exacta en formato YYYY-MM-DD"
+        required: true
+    returns: "total_fatalities: INT"
+    cypher: |
+      MATCH (e:Event)-[:AT_LOCATION]->(l:Location)
+      WHERE l.country = $country
+        AND date(e.event_date) = date($event_date)
+      RETURN coalesce(sum(e.fatalities), 0) AS total_fatalities
+
+  - id: "count_events_by_admin1_year"
+    description: "Cuenta eventos en un admin1 (distrito/región) durante un año."
+    when_to_use: |
+      Preguntas tipo "¿Cuántos eventos hubo en <distrito> durante <año>?".
+      Útil para Tel Aviv, HaDarom, Jerusalem, etc. (cualquier valor de Location.admin1).
+    parameters:
+      - name: "admin1"
+        type: "string"
+        description: "Distrito o región (Location.admin1)"
+        required: true
+      - name: "year"
+        type: "integer"
+        description: "Año"
+        required: true
+    returns: "event_count: INT"
+    cypher: |
+      MATCH (e:Event)-[:AT_LOCATION]->(l:Location)
+      WHERE l.admin1 = $admin1 AND e.year = $year
+      RETURN count(DISTINCT e) AS event_count
+
+  - id: "peak_month_events_by_country_year"
+    description: "Mes con más eventos para un país y año dados (top-1)."
+    when_to_use: |
+      Preguntas tipo "¿En qué mes de <año> hubo más eventos en <país>?".
+      Devuelve la fila ordenada por count desc, top-1.
+    parameters:
+      - name: "country"
+        type: "string"
+        description: "País (Location.country)"
+        required: true
+      - name: "year"
+        type: "integer"
+        description: "Año"
+        required: true
+    returns: "month_id: STRING, event_count: INT"
+    cypher: |
+      MATCH (e:Event)-[:AT_LOCATION]->(l:Location)
+      MATCH (e)-[:IN_MONTH]->(m:Month)
+      WHERE l.country = $country AND m.year = $year
+      RETURN m.month_id AS month_id, count(DISTINCT e) AS event_count
+      ORDER BY event_count DESC
+      LIMIT 1
+
+  - id: "count_events_by_country_month_list"
+    description: "Cuenta eventos en un país para una lista de meses YYYY-MM."
+    when_to_use: |
+      Preguntas comparativas tipo "¿Cuántos eventos en <país> en <mes A> vs <mes B>?".
+      Pasar el parámetro month_ids como lista ['YYYY-MM', ...].
+      El agente compara los conteos retornados por mes.
+    parameters:
+      - name: "country"
+        type: "string"
+        description: "País (Location.country)"
+        required: true
+      - name: "month_ids"
+        type: "list"
+        description: "Lista de meses YYYY-MM, ej ['2023-09','2023-10']"
+        required: true
+    returns: "month_id: STRING, event_count: INT"
+    cypher: |
+      MATCH (e:Event)-[:AT_LOCATION]->(l:Location)
+      MATCH (e)-[:IN_MONTH]->(m:Month)
+      WHERE l.country = $country
+        AND m.month_id IN $month_ids
+      RETURN m.month_id AS month_id, count(DISTINCT e) AS event_count
+      ORDER BY m.month_id
+
+  - id: "top_opponents_of_actor"
+    description: "Top actores que enfrentaron a un actor objetivo (sides opuestos en INVOLVED_IN) en un año."
+    when_to_use: |
+      Preguntas tipo "¿Qué actores se enfrentaron a <X> en <año>?".
+      Filtra por r1.side <> r2.side para capturar oposición (no co-aparición).
+      `target_substring` se matchea con CONTAINS sobre Actor.actor_name (útil para
+      'Military Forces of Israel' que tiene sufijo de año).
+    parameters:
+      - name: "target_substring"
+        type: "string"
+        description: "Substring del actor objetivo (Actor.actor_name CONTAINS)"
+        required: true
+      - name: "year"
+        type: "integer"
+        description: "Año"
+        required: true
+      - name: "top_n"
+        type: "integer"
+        description: "Cantidad de oponentes a devolver"
+        required: false
+        default: 10
+    returns: "opponent: STRING, confrontations: INT"
+    cypher: |
+      MATCH (target:Actor)-[r1:INVOLVED_IN]->(e:Event)<-[r2:INVOLVED_IN]-(opp:Actor)
+      WHERE target.actor_name CONTAINS $target_substring
+        AND r1.side <> r2.side
+        AND e.year = $year
+        AND opp.actor_name <> target.actor_name
+      RETURN opp.actor_name AS opponent, count(DISTINCT e) AS confrontations
+      ORDER BY confrontations DESC
+      LIMIT $top_n
+
+  - id: "count_events_by_admin1_list_year"
+    description: "Compara conteo de eventos entre múltiples admin1 para un año."
+    when_to_use: |
+      Preguntas comparativas tipo "¿Cuántos eventos en <admin1_A> versus <admin1_B>?".
+      Pasar admin1_list como lista de distritos.
+    parameters:
+      - name: "admin1_list"
+        type: "list"
+        description: "Lista de admin1 a comparar, ej ['HaDarom','HaZafon']"
+        required: true
+      - name: "year"
+        type: "integer"
+        description: "Año"
+        required: true
+    returns: "admin1: STRING, event_count: INT"
+    cypher: |
+      MATCH (e:Event)-[:AT_LOCATION]->(l:Location)
+      WHERE l.admin1 IN $admin1_list
+        AND e.year = $year
+      RETURN l.admin1 AS admin1, count(DISTINCT e) AS event_count
+      ORDER BY event_count DESC
+
+  - id: "top_locations_by_country_year"
+    description: "Top N localidades (location_name) con más eventos en un país y año."
+    when_to_use: |
+      Preguntas tipo "¿Cuáles fueron las <N> localidades con más eventos en <país> durante <año>?".
+      Usa Location.location_name (city/town).
+    parameters:
+      - name: "country"
+        type: "string"
+        description: "País (Location.country)"
+        required: true
+      - name: "year"
+        type: "integer"
+        description: "Año"
+        required: true
+      - name: "top_n"
+        type: "integer"
+        description: "Cantidad de localidades a devolver"
+        required: false
+        default: 3
+    returns: "location: STRING, event_count: INT"
+    cypher: |
+      MATCH (e:Event)-[:AT_LOCATION]->(l:Location)
+      WHERE l.country = $country AND e.year = $year
+      RETURN l.location_name AS location, count(DISTINCT e) AS event_count
+      ORDER BY event_count DESC
+      LIMIT $top_n
+
+  - id: "non_local_state_forces_by_year"
+    description: "Actores con ActorType='State forces' que NO sean del país local (filtro substring)."
+    when_to_use: |
+      Preguntas tipo "¿Hubo actores estatales extranjeros (ej: europeos, estadounidenses) en eventos en <año>?".
+      Devuelve la lista para inspección semántica; el agente debe decidir
+      si alguno corresponde a la región geográfica preguntada.
+    parameters:
+      - name: "year"
+        type: "integer"
+        description: "Año"
+        required: true
+      - name: "local_substring"
+        type: "string"
+        description: "Substring que identifica actores locales a EXCLUIR (ej: 'Israel')"
+        required: true
+    returns: "state_actor: STRING, events: INT"
+    cypher: |
+      MATCH (a:Actor)-[:HAS_TYPE]->(:ActorType {name: 'State forces'})
+      MATCH (a)-[:INVOLVED_IN]->(e:Event)
+      WHERE e.year = $year
+        AND NOT a.actor_name CONTAINS $local_substring
+      RETURN DISTINCT a.actor_name AS state_actor, count(DISTINCT e) AS events
+      ORDER BY events DESC

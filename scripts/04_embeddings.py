@@ -20,6 +20,7 @@ import argparse
 import logging
 import sys
 import time
+from collections import deque
 from pathlib import Path
 
 import pandas as pd
@@ -37,14 +38,61 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--out", default="data/graph/event_embeddings.parquet")
     p.add_argument("--batch-size", type=int, default=None,
                    help="Override del batch_size de embeddings.yaml (útil para rate limits).")
-    p.add_argument("--sleep-between-batches", type=float, default=1.0,
-                   help="Segundos a dormir entre batches (evita 429 del free tier).")
+    p.add_argument("--rpm-limit", type=int, default=95,
+                   help="Margen seguro bajo el RPM del proveedor (Gemini free: 100).")
+    p.add_argument("--tpm-limit", type=int, default=28000,
+                   help="Margen seguro bajo el TPM del proveedor (Gemini free: 30K).")
+    p.add_argument("--rpd-limit", type=int, default=0,
+                   help="Si > 0, abortar limpio al llegar a este nro de requests (Gemini free: 1000).")
     p.add_argument("--max-retries", type=int, default=6,
                    help="Reintentos por batch ante 429/5xx con backoff exponencial.")
     p.add_argument("--resume", action="store_true",
                    help="Si el parquet de salida existe, continuar desde donde quedó.")
     p.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     return p.parse_args()
+
+
+class RateLimiter:
+    """
+    Rate limiter con ventana deslizante de 60s para RPM + TPM.
+
+    Antes de cada request, espera hasta que el budget de RPM y TPM
+    permitan el batch entrante. Más eficiente que un sleep fijo:
+    aprovecha al máximo la cuota sin tirar 429.
+    """
+
+    def __init__(self, rpm: int, tpm: int, log) -> None:
+        self.rpm = rpm
+        self.tpm = tpm
+        self.log = log
+        # cada elemento: (timestamp, tokens_de_la_request)
+        self.window: deque[tuple[float, int]] = deque()
+
+    def _purge(self, now: float) -> None:
+        while self.window and now - self.window[0][0] >= 60.0:
+            self.window.popleft()
+
+    def acquire(self, batch_tokens: int) -> None:
+        while True:
+            now = time.monotonic()
+            self._purge(now)
+            req_count = len(self.window)
+            tok_sum = sum(t for _, t in self.window)
+            if req_count < self.rpm and tok_sum + batch_tokens <= self.tpm:
+                self.window.append((now, batch_tokens))
+                return
+            # esperar hasta que expire el evento más antiguo
+            wait = 60.0 - (now - self.window[0][0]) + 0.1
+            self.log.info(
+                "Rate limit: req=%d/%d tok=%d/%d, esperando %.1fs.",
+                req_count, self.rpm, tok_sum, self.tpm, wait,
+            )
+            time.sleep(max(wait, 0.5))
+
+
+def estimate_tokens(texts: list[str]) -> int:
+    """Estimación rápida: chars/4. Suficiente para batches del orden de 100 textos."""
+    return sum(len(t) for t in texts) // 4
 
 
 def embed_with_retry(embedder, texts: list[str], max_retries: int, log) -> list[list[float]]:
@@ -121,27 +169,34 @@ def main() -> None:
 
     embedder = provider.get_document_embeddings()
     batch_size = args.batch_size or provider.batch_size
-    log.info("Batch=%d sleep=%.2fs max_retries=%d",
-             batch_size, args.sleep_between_batches, args.max_retries)
+    log.info("Batch=%d rpm=%d tpm=%d max_retries=%d",
+             batch_size, args.rpm_limit, args.tpm_limit, args.max_retries)
+    limiter = RateLimiter(rpm=args.rpm_limit, tpm=args.tpm_limit, log=log)
 
     all_rows: list[dict] = list(existing_rows)
     processed_in_run = 0
+    requests_in_run = 0
     try:
         for start in range(0, len(df), batch_size):
+            if args.rpd_limit > 0 and requests_in_run >= args.rpd_limit:
+                log.warning(
+                    "RPD limit alcanzado (%d). Abortando limpio. "
+                    "Re-ejecutar con --resume mañana.", args.rpd_limit,
+                )
+                break
             chunk = df.iloc[start : start + batch_size]
+            texts = chunk["notes"].astype(str).tolist()
+            limiter.acquire(estimate_tokens(texts))
             vectors = embed_with_retry(
-                embedder,
-                chunk["notes"].astype(str).tolist(),
-                max_retries=args.max_retries,
-                log=log,
+                embedder, texts,
+                max_retries=args.max_retries, log=log,
             )
+            requests_in_run += 1
             for eid, vec in zip(chunk["event_id"].tolist(), vectors):
                 all_rows.append({"event_id": eid, "embedding": vec})
             processed_in_run += len(chunk)
-            log.info("Embeddings: %d / %d (nuevos en esta corrida)",
-                     processed_in_run, len(df))
-            if args.sleep_between_batches > 0 and start + batch_size < len(df):
-                time.sleep(args.sleep_between_batches)
+            log.info("Embeddings: %d / %d (req=%d)",
+                     processed_in_run, len(df), requests_in_run)
     except Exception:
         # checkpoint defensivo: guardar lo que haya antes de re-lanzar
         log.exception("Falló el cálculo de embeddings. Guardando checkpoint parcial.")
