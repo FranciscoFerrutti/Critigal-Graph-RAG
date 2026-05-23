@@ -14,13 +14,14 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any
+from typing import Annotated, Any
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.tools import StructuredTool
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph
+from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel
 
@@ -37,9 +38,14 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 class AgentState(BaseModel):
-    """Estado compartido del agente conversacional."""
+    """
+    Estado compartido del agente conversacional.
 
-    messages: list[BaseMessage]
+    `messages` usa el reducer `add_messages` para que los nodos appendien
+    en vez de reemplazar (sin esto, `ToolNode` rompe el historial).
+    """
+
+    messages: Annotated[list[BaseMessage], add_messages]
     tool_results: dict[str, Any] | None = None
     response: str | None = None
     error: str | None = None
@@ -346,8 +352,8 @@ class ChatbotAgent:
             messages = [SystemMessage(content=system_prompt), HumanMessage(content=synth_user)]
             response = self.planner_llm.invoke(messages)
 
-        new_messages = state.messages + [response]
-        return {"messages": new_messages}
+        # Con el reducer `add_messages`, devolvemos solo el delta (no toda la lista).
+        return {"messages": [response]}
 
     def _finalize_response(self, state: AgentState) -> dict[str, Any]:
         """
