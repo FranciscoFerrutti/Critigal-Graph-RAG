@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 
 from src.config import load_yaml
 from src.neo4j_conn import get_driver
+from src.tools.registry import ToolContext, register_tool
 
 logger = logging.getLogger(__name__)
 
@@ -204,3 +205,12 @@ def build_cypher_query_tool(
         args_schema=CypherQueryArgs,
         func=_run,
     )
+
+
+@register_tool("cypher_query")
+def _registry_builder(ctx: ToolContext) -> StructuredTool:
+    """Entry-point del registry. Lee `library_path` desde agent_config.paths."""
+    library_path = ctx.agent_config.get("paths", {}).get(
+        "cypher_library", "config/cypher_library.yaml"
+    )
+    return build_cypher_query_tool(library_path=library_path)

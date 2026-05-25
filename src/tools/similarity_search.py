@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 from src.config import load_yaml
 from src.embeddings import get_embedding_provider
 from src.schema import GraphSchema
+from src.tools.registry import ToolContext, register_tool
 
 logger = logging.getLogger(__name__)
 
@@ -98,4 +99,14 @@ def build_similarity_search_tool(
         ),
         args_schema=SimilaritySearchArgs,
         func=_run,
+    )
+
+
+@register_tool("similarity_search")
+def _registry_builder(ctx: ToolContext) -> StructuredTool:
+    """Entry-point del registry. Delega al builder principal con ctx desempaquetado."""
+    return build_similarity_search_tool(
+        agent_config=ctx.agent_config,
+        embeddings_config=ctx.embeddings_config,
+        graph_schema=ctx.graph_schema,
     )
