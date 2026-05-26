@@ -175,15 +175,27 @@ def build_cypher_query_tool(
         try:
             cq = library.get(query_id)
         except KeyError as e:
+            logger.warning("cypher_query: query_id desconocido '%s'. IDs válidos: %s", query_id, sorted(library._queries.keys()))
             return [{"error": str(e)}]
         try:
             params = _coerce_params(cq, parameters or {})
         except ValueError as e:
+            logger.warning("cypher_query: parámetros inválidos para id='%s': %s", query_id, e)
             return [{"error": str(e)}]
+
+        logger.debug(
+            "cypher_query: id=%s params=%s\n%s",
+            query_id,
+            params,
+            cq.cypher,
+        )
+
         try:
             with get_driver() as driver, driver.session() as session:
                 result = session.run(cq.cypher, **params)
                 rows = [_jsonify(dict(record)) for record in result]
+            if not rows:
+                logger.warning("cypher_query: id='%s' devolvió 0 filas (params=%s)", query_id, params)
             return rows or [{"info": "Sin resultados."}]
         except Exception as e:
             logger.exception("Falló cypher_query id=%s params=%s", query_id, params)

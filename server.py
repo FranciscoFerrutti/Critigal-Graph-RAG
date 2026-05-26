@@ -166,13 +166,13 @@ async def chat(request: ChatRequest) -> ChatResponse:
             raise RuntimeError("Agente no inicializado")
 
         # Invocar agente
-        logger.info(f"📨 Procesando mensaje: {request.message[:100]}...")
+        logger.info("Consulta recibida: %s", request.message)
         response_text = agent.invoke(request.message)
 
         # Detectar idioma
         language = _detect_language(request.message)
 
-        logger.info(f"✓ Respuesta generada (idioma: {language})")
+        logger.info("Respuesta generada (idioma: %s): %s", language, response_text)
 
         return ChatResponse(
             response=response_text,

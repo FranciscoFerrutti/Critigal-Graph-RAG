@@ -65,22 +65,42 @@ def build_similarity_search_tool(
     def _run(query: str, top_k: int | None = None) -> list[dict[str, Any]]:
         from langchain_neo4j import Neo4jVector
 
-        vector_store = Neo4jVector.from_existing_index(
-            embedding=query_embeddings,
-            url=os.environ["NEO4J_URI"],
-            username=os.environ.get("NEO4J_USER", "neo4j"),
-            password=os.environ["NEO4J_PASSWORD"],
-            index_name=vi.name,
-            node_label=vi.node_label,
-            embedding_node_property=vi.property,
-            text_node_property="notes",
-        )
         k = top_k or default_top_k
-        hits = vector_store.similarity_search_with_score(query, k=k)
+        logger.debug("similarity_search: query=%r top_k=%d", query, k)
+
+        try:
+            vector_store = Neo4jVector.from_existing_index(
+                embedding=query_embeddings,
+                url=os.environ["NEO4J_URI"],
+                username=os.environ.get("NEO4J_USER", "neo4j"),
+                password=os.environ["NEO4J_PASSWORD"],
+                index_name=vi.name,
+                node_label=vi.node_label,
+                embedding_node_property=vi.property,
+                text_node_property="notes",
+            )
+            hits = vector_store.similarity_search_with_score(query, k=k)
+        except Exception:
+            logger.error(
+                "similarity_search: fallo al conectar con Neo4j o calcular embeddings",
+                exc_info=True,
+            )
+            raise
+
+        if not hits:
+            logger.warning("similarity_search: sin resultados para query=%r", query)
+
         results: list[dict[str, Any]] = []
         for doc, score in hits:
+            event_id = doc.metadata.get("event_id")
+            logger.debug(
+                "similarity_search: event_id=%s score=%.4f notes=%.120r",
+                event_id,
+                float(score),
+                doc.page_content,
+            )
             results.append({
-                "event_id": doc.metadata.get("event_id"),
+                "event_id": event_id,
                 "score": float(score),
                 "notes": doc.page_content,
                 "event_date": doc.metadata.get("event_date"),

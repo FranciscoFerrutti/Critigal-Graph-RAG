@@ -18,7 +18,15 @@ validación + retry con corrección si la primera ejecución falla.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def build_text2cypher_tool(*_args, **_kwargs):
     """TODO (Etapa 3): devolver StructuredTool que use GraphCypherQAChain."""
     raise NotImplementedError("text2cypher tool se implementa en Etapa 3.")
+
+
+# Al implementar _run en Etapa 3, agregar antes de ejecutar la Cypher generada:
+#   logger.debug("text2cypher: cypher generado=\n%s", generated_cypher)
