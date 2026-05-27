@@ -183,12 +183,18 @@ async def chat(request: ChatRequest) -> ChatResponse:
     except Exception as e:
         logger.error(f"Error procesando chat: {e}", exc_info=True)
 
-        # Respuesta de error en el idioma detectado
+        # Respuesta de error genérica en el idioma detectado (sin filtrar detalles internos)
         language = _detect_language(request.message)
         if language == "es":
-            error_msg = f"Hubo un error procesando tu pregunta: {str(e)}"
+            error_msg = (
+                "Perdón, en este momento no puedo atender su consulta. "
+                "Por favor, intente más tarde."
+            )
         else:
-            error_msg = f"There was an error processing your question: {str(e)}"
+            error_msg = (
+                "Sorry, I can't process your request right now. "
+                "Please try again later."
+            )
 
         raise HTTPException(status_code=500, detail=error_msg)
 

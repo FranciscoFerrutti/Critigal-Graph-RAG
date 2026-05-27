@@ -77,8 +77,14 @@ class ChatbotAgent:
             logger.error("Error en agente: %s", e, exc_info=True)
             language = detect_language(user_message)
             if language == "es":
-                return f"Lo siento, hubo un error procesando tu pregunta: {e}"
-            return f"I'm sorry, there was an error processing your question: {e}"
+                return (
+                    "Perdón, en este momento no puedo atender su consulta. "
+                    "Por favor, intente más tarde."
+                )
+            return (
+                "Sorry, I can't process your request right now. "
+                "Please try again later."
+            )
 
     def invoke_trace(self, user_message: str) -> dict[str, Any]:
         """
