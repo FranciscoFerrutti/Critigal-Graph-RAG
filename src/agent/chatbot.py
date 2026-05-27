@@ -35,7 +35,8 @@ class ChatbotAgent:
         self.graph_schema = GraphSchema.from_yaml(f"{config_dir}/graph_schema.yaml")
 
         # LLM
-        api_key = resolve_api_key(self.agent_config["google"]["api_key_env"])
+        provider = self.agent_config.get("provider", "google")
+        api_key = resolve_api_key(self.agent_config[provider]["api_key_env"])
         self.planner_llm = build_planner_llm(self.agent_config, api_key)
 
         # Tools (vía registry; enabled list opcional en agent.yaml)

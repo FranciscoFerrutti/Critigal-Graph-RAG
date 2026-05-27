@@ -13,6 +13,7 @@ neo4j>=5.14                      # driver oficial (soporta vector index)
 langchain>=0.3
 langchain-core>=0.3
 langchain-google-genai>=2.0      # Gemini (embeddings + chat) — proveedor default
+langchain-groq>=0.2              # Groq (planner + text2cypher) — proveedor alternativo
 langchain-neo4j>=0.3             # Neo4jVector, GraphCypherQAChain
 langchain-huggingface>=0.1       # fallback local de embeddings
 langgraph>=0.2                   # agente planificador (etapa 3)

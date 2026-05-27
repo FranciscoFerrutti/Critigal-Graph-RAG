@@ -142,8 +142,8 @@ queries:
       OPTIONAL MATCH (sub)-[:SUBTYPE_OF]->(primary:EventType)
       WITH e, sub, primary
       WHERE (sub.name = $event_type_name OR primary.name = $event_type_name)
-        AND date(e.event_date) >= date($start_date)
-        AND date(e.event_date) <= date($end_date)
+        AND e.event_date >= $start_date
+        AND e.event_date <= $end_date
       OPTIONAL MATCH (e)-[:AT_LOCATION]->(l:Location)
       WHERE $admin1 IS NULL OR l.admin1 = $admin1
       RETURN count(DISTINCT e) AS event_count
@@ -190,7 +190,7 @@ queries:
     description: "Suma de fatalidades en un país en una fecha exacta (YYYY-MM-DD)."
     when_to_use: |
       Preguntas tipo "¿Cuántas fatalidades hubo en <país> el <fecha>?".
-      La fecha se compara contra Event.event_date (tipo date).
+      La fecha se compara contra Event.event_date (string 'YYYY-MM-DD').
     parameters:
       - name: "country"
         type: "string"
@@ -204,7 +204,7 @@ queries:
     cypher: |
       MATCH (e:Event)-[:AT_LOCATION]->(l:Location)
       WHERE l.country = $country
-        AND date(e.event_date) = date($event_date)
+        AND e.event_date = $event_date
       RETURN coalesce(sum(e.fatalities), 0) AS total_fatalities
 
   - id: "count_events_by_admin1_year"

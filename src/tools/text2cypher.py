@@ -67,21 +67,30 @@ class Text2CypherArgs(BaseModel):
 # Renderizado de contexto para el prompt
 # ---------------------------------------------------------------------------
 
+def _render_attr(a: Any) -> str:
+    """Render `name:type` o `name:type('FORMAT')` si el atributo declara `format`."""
+    if getattr(a, "format", None):
+        return f"{a.name}:{a.type}('{a.format}')"
+    return f"{a.name}:{a.type}"
+
+
 def _render_schema(schema: GraphSchema) -> str:
     """
     Convierte `GraphSchema` en texto compacto para el prompt:
     lista de nodos con sus propiedades y relaciones direccionadas.
+    Si un atributo declara `format` (ej. fechas string), se anota inline
+    para que el LLM no asuma tipos nativos.
     """
     lines: list[str] = ["NODOS:"]
     for node in schema.node_types.values():
-        attrs = ", ".join(f"{a.name}:{a.type}" for a in node.attributes)
+        attrs = ", ".join(_render_attr(a) for a in node.attributes)
         lines.append(f"  ({node.label} {{{attrs}}})")
     lines.append("")
     lines.append("RELACIONES (dirección from -[type]-> to):")
     for rel in schema.relationship_types.values():
         from_label = schema.node(rel.from_node).label
         to_label = schema.node(rel.to_node).label
-        attrs = ", ".join(f"{a.name}:{a.type}" for a in rel.attributes)
+        attrs = ", ".join(_render_attr(a) for a in rel.attributes)
         props = f" {{{attrs}}}" if attrs else ""
         lines.append(f"  ({from_label})-[:{rel.type}{props}]->({to_label})")
     return "\n".join(lines)
@@ -115,6 +124,15 @@ def _build_text2cypher_llm(
             model=cfg["model"],
             temperature=cfg["temperature"],
             google_api_key=api_key,
+        )
+    if provider == "groq":
+        from langchain_groq import ChatGroq
+
+        cfg = agent_config["groq"]["text2cypher"]
+        return ChatGroq(
+            model=cfg["model"],
+            temperature=cfg["temperature"],
+            groq_api_key=api_key,
         )
     raise ValueError(
         f"Provider LLM desconocido: '{provider}'. "
@@ -175,7 +193,9 @@ REGLAS DURAS:
 - Si la pregunta menciona Gaza o Cisjordania usá Location.admin1
   (valores típicos: 'Gaza Strip', 'West Bank'). Para países completos usá
   Location.country (ej: 'Israel', 'Palestine').
-- Event.event_date es tipo date. Comparar con date('YYYY-MM-DD').
+- Event.event_date es tipo string en formato 'YYYY-MM-DD'. Comparar contra
+  string literal: e.event_date = '2023-10-07'. NUNCA envolver con date().
+  Para rangos usar comparación lexicográfica: e.event_date >= '2023-10-01'.
 - Para agrupar por mes preferí (Event)-[:IN_MONTH]->(Month) y Month.month_id
   ('YYYY-MM').
 - Devolvé columnas con alias claros (AS event_count, AS actor_name, etc.).
@@ -235,7 +255,8 @@ def build_text2cypher_tool(
         agent_cfg.get("paths", {}).get("cypher_library", "config/cypher_library.yaml")
     )
 
-    api_key = resolve_api_key(agent_cfg.get("google", {}).get("api_key_env"))
+    provider = agent_cfg.get("provider", "google")
+    api_key = resolve_api_key(agent_cfg.get(provider, {}).get("api_key_env"))
     llm = _build_text2cypher_llm(agent_cfg, api_key)
 
     schema_text = _render_schema(schema)

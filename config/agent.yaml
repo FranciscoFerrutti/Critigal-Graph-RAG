@@ -18,6 +18,16 @@ google:
     temperature: 0.0                    # determinístico para código
   api_key_env: "GOOGLE_API_KEY"
 
+# Groq — free tier generoso, modelos Llama con soporte de tool-calling
+groq:
+  planner:
+    model: "llama-3.3-70b-versatile"   # soporta tool calling
+    temperature: 0.2
+  text2cypher:
+    model: "llama-3.3-70b-versatile"   # determinístico para Cypher
+    temperature: 0.0
+  api_key_env: "GROQ_API_KEY"
+
 # Parámetros de retrieval para la tool similarity_search
 retrieval:
   top_k: 10                             # nodos Event más cercanos a recuperar

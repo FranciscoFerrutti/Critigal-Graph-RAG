@@ -19,6 +19,7 @@ def build_planner_llm(agent_config: dict[str, Any], api_key: str | None) -> Base
 
     Soporta:
         - google (gemini): usa `langchain_google_genai.ChatGoogleGenerativeAI`.
+        - groq: usa `langchain_groq.ChatGroq`.
 
     Para sumar otro provider: agregar rama acá y la dependencia opcional.
     """
@@ -32,6 +33,16 @@ def build_planner_llm(agent_config: dict[str, Any], api_key: str | None) -> Base
             model=planner_cfg["model"],
             temperature=planner_cfg["temperature"],
             google_api_key=api_key,
+        )
+
+    if provider == "groq":
+        from langchain_groq import ChatGroq
+
+        planner_cfg = agent_config["groq"]["planner"]
+        return ChatGroq(
+            model=planner_cfg["model"],
+            temperature=planner_cfg["temperature"],
+            groq_api_key=api_key,
         )
 
     raise ValueError(

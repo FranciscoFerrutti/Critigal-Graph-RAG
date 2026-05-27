@@ -102,6 +102,7 @@ node_types:
       - name: "event_date"
         source_column: "event_date"
         type: "string"
+        format: "YYYY-MM-DD"             # almacenado como string; comparar con literal, NUNCA envolver con date()
       - name: "year"
         source_column: "year"
         type: "integer"
