@@ -64,6 +64,11 @@ class AgentNodes:
             llm = self.planner_llm.bind_tools(self.tools) if self.tools else self.planner_llm
             messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_text)]
             response = llm.invoke(messages)
+            if getattr(response, "tool_calls", None):
+                for tc in response.tool_calls:
+                    name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", "?")
+                    args = tc.get("args") if isinstance(tc, dict) else getattr(tc, "args", {})
+                    logger.info("Tool seleccionada: %s (args=%s)", name, args)
         else:
             tool_context = _format_tool_context(tool_calls_seen, tool_msgs)
             synth_user = (

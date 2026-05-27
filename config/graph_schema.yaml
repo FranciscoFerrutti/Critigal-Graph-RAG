@@ -101,7 +101,7 @@ node_types:
         type: "string"
       - name: "event_date"
         source_column: "event_date"
-        type: "date"
+        type: "string"
       - name: "year"
         source_column: "year"
         type: "integer"
