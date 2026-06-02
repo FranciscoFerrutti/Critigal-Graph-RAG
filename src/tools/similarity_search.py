@@ -74,6 +74,7 @@ def build_similarity_search_tool(
                 url=os.environ["NEO4J_URI"],
                 username=os.environ.get("NEO4J_USER", "neo4j"),
                 password=os.environ["NEO4J_PASSWORD"],
+                database=os.environ.get("NEO4J_DATABASE", "neo4j"),
                 index_name=vi.name,
                 node_label=vi.node_label,
                 embedding_node_property=vi.property,
