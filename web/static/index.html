@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CriticalGraphRAG — Chatbot ACLED</title>
+  <style>
+    :root {
+      --bg: #f4f5f7;
+      --surface: #ffffff;
+      --border: #d9dce1;
+      --text: #1f2430;
+      --text-muted: #6b7280;
+      --user-bubble: #2563eb;
+      --user-text: #ffffff;
+      --bot-bubble: #e9ecf1;
+      --bot-text: #1f2430;
+      --accent: #2563eb;
+      --error: #b91c1c;
+      --radius: 14px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+      height: 100vh;
+    }
+
+    .chat-app {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      max-width: 760px;
+      height: 100%;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+    }
+
+    header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.05rem;
+    }
+    header p {
+      margin: 2px 0 0;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .bubble {
+      max-width: 78%;
+      padding: 10px 14px;
+      border-radius: var(--radius);
+      line-height: 1.45;
+      font-size: 0.95rem;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .bubble.user {
+      align-self: flex-end;
+      background: var(--user-bubble);
+      color: var(--user-text);
+      border-bottom-right-radius: 4px;
+    }
+    .bubble.assistant {
+      align-self: flex-start;
+      background: var(--bot-bubble);
+      color: var(--bot-text);
+      border-bottom-left-radius: 4px;
+    }
+    .bubble.error {
+      align-self: flex-start;
+      background: #fde8e8;
+      color: var(--error);
+      border: 1px solid #f5c2c2;
+    }
+
+    /* Indicador de typing: tres puntos animados */
+    .typing {
+      align-self: flex-start;
+      background: var(--bot-bubble);
+      border-radius: var(--radius);
+      border-bottom-left-radius: 4px;
+      padding: 14px 16px;
+      display: flex;
+      gap: 5px;
+    }
+    .typing span {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      animation: blink 1.2s infinite both;
+    }
+    .typing span:nth-child(2) { animation-delay: 0.2s; }
+    .typing span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes blink {
+      0%, 80%, 100% { opacity: 0.25; }
+      40% { opacity: 1; }
+    }
+
+    form {
+      display: flex;
+      gap: 8px;
+      padding: 14px 20px;
+      border-top: 1px solid var(--border);
+    }
+    #input {
+      flex: 1;
+      padding: 10px 14px;
+      font-size: 0.95rem;
+      font-family: inherit;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      outline: none;
+    }
+    #input:focus { border-color: var(--accent); }
+    #send {
+      padding: 10px 20px;
+      font-size: 0.95rem;
+      font-family: inherit;
+      border: none;
+      border-radius: var(--radius);
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+    }
+    #send:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+  <div class="chat-app">
+    <header>
+      <h1>CriticalGraphRAG</h1>
+      <p>Chatbot sobre el conflicto Israel/Palestina (datos ACLED 2023)</p>
+    </header>
+
+    <div id="messages">
+      <div class="bubble assistant">Hola, soy el asistente de CriticalGraphRAG. Preguntame sobre eventos del conflicto Israel/Palestina en 2023: conteos, actores, lugares o descripciones de lo ocurrido.</div>
+    </div>
+
+    <form id="chat-form">
+      <input id="input" type="text" placeholder="Escribí tu pregunta..." autocomplete="off" autofocus>
+      <button id="send" type="submit">Enviar</button>
+    </form>
+  </div>
+
+  <script>
+    // Sesión efímera: nueva en cada carga de página, sin persistencia.
+    const sessionId = crypto.randomUUID();
+
+    const messagesEl = document.getElementById("messages");
+    const formEl = document.getElementById("chat-form");
+    const inputEl = document.getElementById("input");
+    const sendEl = document.getElementById("send");
+
+    function addBubble(text, role) {
+      const div = document.createElement("div");
+      div.className = `bubble ${role}`;
+      div.textContent = text;
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      return div;
+    }
+
+    function showTyping() {
+      const div = document.createElement("div");
+      div.className = "typing";
+      div.innerHTML = "<span></span><span></span><span></span>";
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      return div;
+    }
+
+    function setBusy(busy) {
+      sendEl.disabled = busy;
+      inputEl.disabled = busy;
+    }
+
+    formEl.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const message = inputEl.value.trim();
+      if (!message || sendEl.disabled) return;
+
+      addBubble(message, "user");
+      inputEl.value = "";
+      setBusy(true);
+      const typingEl = showTyping();
+
+      try {
+        const res = await fetch("/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message, session_id: sessionId }),
+        });
+
+        typingEl.remove();
+
+        if (!res.ok) {
+          let detail = `Error ${res.status}`;
+          try {
+            const err = await res.json();
+            if (err.detail) detail = typeof err.detail === "string" ? err.detail : detail;
+          } catch (_) { /* body no-JSON: queda el mensaje genérico */ }
+          addBubble(detail, "error");
+          return;
+        }
+
+        const data = await res.json();
+        addBubble(data.response, "assistant");
+      } catch (err) {
+        typingEl.remove();
+        addBubble("No se pudo contactar al servidor. Verificá que el backend esté corriendo.", "error");
+      } finally {
+        setBusy(false);
+        inputEl.focus();
+      }
+    });
+  </script>
+</body>
+</html>
