@@ -1,7 +1,9 @@
 """Capa web de CriticalGraphRAG: UI de chatbot + proxy hacia el agente en producción.
 
 El agente ya corre como servicio remoto (Render) y expone POST /chat con el
-contrato {"message": str, "top_k": int | null} -> {"response": str, "language": str}.
+contrato {"message": str, "top_k": int | null} -> {"response": str,
+"language": str, "used_tool": str | null, "data_sources": list[str],
+"citations": list[dict], "latency_ms": int | null}.
 El endpoint remoto es stateless: no acepta session_id ni historial, por lo que
 la memoria de conversación vive acá, en un dict en memoria por session_id.
 """
@@ -10,6 +12,7 @@ import logging
 import os
 from collections import defaultdict
 from pathlib import Path
+from typing import Any
 
 import requests
 from dotenv import load_dotenv
@@ -66,6 +69,10 @@ class ChatResponse(BaseModel):
     response: str
     language: str
     session_id: str
+    used_tool: str | None = None
+    data_sources: list[str] = Field(default_factory=list)
+    citations: list[dict[str, Any]] = Field(default_factory=list)
+    latency_ms: int | None = None
 
 
 @app.get("/", include_in_schema=False)
@@ -118,6 +125,10 @@ def chat(request: ChatRequest) -> ChatResponse:
         response=answer,
         language=data.get("language", "es"),
         session_id=request.session_id,
+        used_tool=data.get("used_tool"),
+        data_sources=data.get("data_sources", []),
+        citations=data.get("citations", []),
+        latency_ms=data.get("latency_ms"),
     )
 
 
