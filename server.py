@@ -50,11 +50,48 @@ class ChatRequest(BaseModel):
     )
 
 
+class Citation(BaseModel):
+    """Evento ACLED concreto que fundamenta la respuesta."""
+
+    event_id: str = Field(..., description="ID del evento ACLED.")
+    event_date: str | None = Field(None, description="Fecha del evento (YYYY-MM-DD).")
+    country: str | None = Field(None, description="País del evento.")
+    admin1: str | None = Field(None, description="División administrativa (ej. Gaza Strip).")
+    notes: str | None = Field(None, description="Nota descriptiva del evento (puede venir truncada).")
+    score: float | None = Field(None, description="Score de similitud (si vino de búsqueda vectorial).")
+    source: str = Field(..., description="Proveedor de datos de la cita (ej. ACLED).")
+
+
 class ChatResponse(BaseModel):
     """Response body de POST /chat."""
 
     response: str = Field(..., description="Respuesta del agente.")
     language: str = Field(..., description="Idioma detectado de la pregunta (es|en).")
+    used_tool: str | None = Field(
+        None,
+        description=(
+            "Tool que el agente usó para responder (similarity_search | "
+            "cypher_query | text2cypher). None si respondió sin tools."
+        ),
+    )
+    data_sources: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Proveedores de datos de los que proviene la respuesta. Hoy solo "
+            "'ACLED'; es una lista para soportar múltiples fuentes a futuro."
+        ),
+    )
+    citations: list[Citation] = Field(
+        default_factory=list,
+        description=(
+            "Eventos ACLED concretos que fundamentan la respuesta. Vacío cuando "
+            "la respuesta no se apoya en eventos puntuales (ej. agregaciones)."
+        ),
+    )
+    latency_ms: int | None = Field(
+        None,
+        description="Tiempo de procesamiento del agente, en milisegundos.",
+    )
 
 
 class HealthResponse(BaseModel):
@@ -166,18 +203,31 @@ async def chat(request: ChatRequest) -> ChatResponse:
         if agent is None:
             raise RuntimeError("Agente no inicializado")
 
-        # Invocar agente
+        # Invocar agente (variante con traza: además del texto, expone qué
+        # tool resolvió la pregunta y de qué fuente(s) de datos proviene).
         logger.info("Consulta recibida: %s", request.message)
-        response_text = agent.invoke(request.message)
+        trace = agent.invoke_trace(request.message)
+        response_text = trace["response"]
+        used_tool = trace.get("used_tool")
+        data_sources = trace.get("data_sources", [])
+        citations = trace.get("citations", [])
+        latency_ms = trace.get("latency_ms")
 
         # Detectar idioma
         language = _detect_language(request.message)
 
-        logger.info("Respuesta generada (idioma: %s): %s", language, response_text)
+        logger.info(
+            "Respuesta generada (idioma: %s, tool: %s, fuentes: %s, citas: %d, %sms): %s",
+            language, used_tool, data_sources, len(citations), latency_ms, response_text,
+        )
 
         return ChatResponse(
             response=response_text,
             language=language,
+            used_tool=used_tool,
+            data_sources=data_sources,
+            citations=citations,
+            latency_ms=latency_ms,
         )
 
     except Exception as e:
