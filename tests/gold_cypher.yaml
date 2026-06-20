@@ -1,21 +1,18 @@
-# Queries Cypher de referencia para el subset gold (18 preguntas adaptadas
-# al dataset realmente cargado: country=Israel, year=2023, 4259 Events).
-#
-# Cada entrada produce la "respuesta esperada" objetiva ejecutando contra
-# el grafo cargado. NO usa LLM — es el oráculo para evaluar el RAG.
+# Queries Cypher oráculo para el conjunto de evaluación del notebook
+# `notebooks/04_evaluacion_kpis.ipynb`. Cada entrada produce el `expected`
+# de una pregunta factual en `tests/eval_set.yaml`. NO usa LLM —
+# se corre offline una vez contra Neo4j y el resultado se pega al `expected`.
 #
 # Convención:
-#   id            slug; coincide con gold_query_id en tests/gold_subset.csv
-#   description   qué calcula la query
-#   cypher        Cypher literal (sin parámetros — gold es deterministic)
-#   answer_format cómo derivar la respuesta_esperada del result-set
+#   id              slug; coincide con gold_query_id en tests/eval_set.yaml
+#   description     qué calcula la query
+#   cypher          Cypher literal (sin parámetros — gold es determinístico)
+#   answer_format   cómo derivar la respuesta canónica del result-set
 #
-# Notas sobre el schema (vs el dataset real):
+# Notas sobre el schema:
 #   - country = 'Israel' (único valor cargado).
 #   - admin1 ∈ {HaDarom, HaMerkaz, HaZafon, Haifa, Jerusalem, Tel Aviv}.
 #   - OF_TYPE apunta al sub_event_type (leaf); event_type primario via SUBTYPE_OF.
-#   - FDI = Actor.actor_name CONTAINS 'Military Forces of Israel'.
-#   - INVOLVED_IN.side ∈ {'primary','secondary'}; oposición = sides distintos.
 
 queries:
 
@@ -25,24 +22,6 @@ queries:
       MATCH (e:Event)-[:IN_MONTH]->(:Month {month_id: '2023-10'})
       MATCH (e)-[:AT_LOCATION]->(l:Location)
       WHERE l.country = 'Israel'
-      RETURN count(DISTINCT e) AS event_count
-    answer_format: "scalar(event_count)"
-
-  - id: "g02_fatalities_israel_oct7_2023"
-    description: "Fatalidades en Israel el 7 de octubre de 2023."
-    cypher: |
-      MATCH (e:Event)-[:AT_LOCATION]->(l:Location)
-      WHERE l.country = 'Israel'
-        AND date(e.event_date) = date('2023-10-07')
-      RETURN coalesce(sum(e.fatalities), 0) AS total_fatalities
-    answer_format: "scalar(total_fatalities)"
-
-  - id: "g03_protests_israel_2023"
-    description: "Eventos cuyo event_type primario es 'Protests' en Israel 2023."
-    cypher: |
-      MATCH (e:Event)-[:OF_TYPE]->(:EventType)-[:SUBTYPE_OF]->(p:EventType {name: 'Protests', level: 'primary'})
-      MATCH (e)-[:AT_LOCATION]->(l:Location)
-      WHERE l.country = 'Israel' AND e.year = 2023
       RETURN count(DISTINCT e) AS event_count
     answer_format: "scalar(event_count)"
 
@@ -62,136 +41,27 @@ queries:
       RETURN coalesce(sum(e.fatalities), 0) AS total_fatalities
     answer_format: "scalar(total_fatalities)"
 
-  - id: "g06_explosions_israel_q4_2023"
-    description: "Eventos 'Explosions/Remote violence' primario en Israel Q4 2023."
+  - id: "g19_zero_fatalities_israel_2023"
+    description: "Eventos en Israel durante 2023 con cero fatalidades (incluye fatalities NULL)."
     cypher: |
-      MATCH (e:Event)-[:OF_TYPE]->(:EventType)-[:SUBTYPE_OF]->(p:EventType {name: 'Explosions/Remote violence', level: 'primary'})
-      MATCH (e)-[:AT_LOCATION]->(l:Location)
-      WHERE l.country = 'Israel'
-        AND date(e.event_date) >= date('2023-10-01')
-        AND date(e.event_date) <= date('2023-12-31')
+      MATCH (e:Event)-[:AT_LOCATION]->(l:Location)
+      WHERE l.country = 'Israel' AND e.year = 2023
+        AND coalesce(e.fatalities, 0) = 0
       RETURN count(DISTINCT e) AS event_count
     answer_format: "scalar(event_count)"
 
-  - id: "g07_events_hadarom_2023"
-    description: "Eventos en HaDarom durante 2023."
+  - id: "g20_distinct_event_days_israel_2023"
+    description: "Cantidad de días distintos en 2023 con al menos un evento en Israel."
     cypher: |
       MATCH (e:Event)-[:AT_LOCATION]->(l:Location)
-      WHERE l.admin1 = 'HaDarom' AND e.year = 2023
-      RETURN count(DISTINCT e) AS event_count
-    answer_format: "scalar(event_count)"
+      WHERE l.country = 'Israel' AND e.year = 2023
+      RETURN count(DISTINCT e.event_date) AS n
+    answer_format: "scalar(n)"
 
-  - id: "g08_peak_month_israel_2023"
-    description: "Mes de 2023 con más eventos en Israel."
-    cypher: |
-      MATCH (e:Event)-[:AT_LOCATION]->(l:Location)
-      MATCH (e)-[:IN_MONTH]->(m:Month)
-      WHERE l.country = 'Israel' AND m.year = 2023
-      RETURN m.month_id AS month, count(DISTINCT e) AS event_count
-      ORDER BY event_count DESC
-      LIMIT 1
-    answer_format: "row(month, event_count)"
-
-  - id: "g09_diff_oct_sep_israel_2023"
-    description: "Conteos sep/oct 2023 Israel; respuesta = oct - sep."
-    cypher: |
-      MATCH (e:Event)-[:AT_LOCATION]->(l:Location)
-      MATCH (e)-[:IN_MONTH]->(m:Month)
-      WHERE l.country = 'Israel'
-        AND m.month_id IN ['2023-09', '2023-10']
-      RETURN m.month_id AS month, count(DISTINCT e) AS event_count
-      ORDER BY m.month_id
-    answer_format: "event_count[2023-10] - event_count[2023-09]"
-
-  - id: "g10_coactors_fdi_hazafon_2023"
-    description: "Actores que co-aparecen con FDI en HaZafon 2023."
-    cypher: |
-      MATCH (fdi:Actor)-[:INVOLVED_IN]->(e:Event)<-[:INVOLVED_IN]-(other:Actor)
-      MATCH (e)-[:AT_LOCATION]->(l:Location)
-      WHERE fdi.actor_name CONTAINS 'Military Forces of Israel'
-        AND other.actor_name <> fdi.actor_name
-        AND l.admin1 = 'HaZafon'
-        AND e.year = 2023
-      RETURN DISTINCT other.actor_name AS coactor, count(DISTINCT e) AS shared_events
-      ORDER BY shared_events DESC
-    answer_format: "list(coactor)"
-
-  - id: "g11_top_opponents_fdi_2023"
-    description: "Top actores que enfrentaron a FDI en 2023 (sides opuestos)."
-    cypher: |
-      MATCH (fdi:Actor)-[r1:INVOLVED_IN]->(e:Event)<-[r2:INVOLVED_IN]-(opponent:Actor)
-      WHERE fdi.actor_name CONTAINS 'Military Forces of Israel'
-        AND r1.side <> r2.side
-        AND e.year = 2023
-        AND opponent.actor_name <> fdi.actor_name
-      RETURN opponent.actor_name AS opponent, count(DISTINCT e) AS confrontations
-      ORDER BY confrontations DESC
-      LIMIT 10
-    answer_format: "list((opponent, confrontations))"
-
-  - id: "g12_top_actor_hadarom_2023"
-    description: "Actor con más apariciones en HaDarom 2023."
+  - id: "g21_distinct_actors_telaviv_2023"
+    description: "Actores únicos involucrados en eventos en distrito Tel Aviv durante 2023."
     cypher: |
       MATCH (a:Actor)-[:INVOLVED_IN]->(e:Event)-[:AT_LOCATION]->(l:Location)
-      WHERE l.admin1 = 'HaDarom' AND e.year = 2023
-      RETURN a.actor_name AS actor, count(DISTINCT e) AS event_count
-      ORDER BY event_count DESC
-      LIMIT 1
-    answer_format: "row(actor, event_count)"
-
-  - id: "g13_hadarom_vs_hazafon_2023"
-    description: "Conteos HaDarom vs HaZafon en 2023."
-    cypher: |
-      MATCH (e:Event)-[:AT_LOCATION]->(l:Location)
-      WHERE l.admin1 IN ['HaDarom', 'HaZafon']
-        AND e.year = 2023
-      RETURN l.admin1 AS region, count(DISTINCT e) AS event_count
-      ORDER BY region
-    answer_format: "dict{region: event_count}"
-
-  - id: "g14_events_jerusalem_2023"
-    description: "Eventos en distrito Jerusalem durante 2023."
-    cypher: |
-      MATCH (e:Event)-[:AT_LOCATION]->(l:Location)
-      WHERE l.admin1 = 'Jerusalem' AND e.year = 2023
-      RETURN count(DISTINCT e) AS event_count
-    answer_format: "scalar(event_count) — sí si >0"
-
-  - id: "g15_vac_israel_2023"
-    description: "Eventos 'Violence against civilians' primario en Israel 2023."
-    cypher: |
-      MATCH (e:Event)-[:OF_TYPE]->(:EventType)-[:SUBTYPE_OF]->(p:EventType {name: 'Violence against civilians', level: 'primary'})
-      MATCH (e)-[:AT_LOCATION]->(l:Location)
-      WHERE l.country = 'Israel' AND e.year = 2023
-      RETURN count(DISTINCT e) AS event_count
-    answer_format: "scalar(event_count)"
-
-  - id: "g16_battles_israel_2023"
-    description: "Eventos 'Battles' primario en Israel 2023."
-    cypher: |
-      MATCH (e:Event)-[:OF_TYPE]->(:EventType)-[:SUBTYPE_OF]->(p:EventType {name: 'Battles', level: 'primary'})
-      MATCH (e)-[:AT_LOCATION]->(l:Location)
-      WHERE l.country = 'Israel' AND e.year = 2023
-      RETURN count(DISTINCT e) AS event_count
-    answer_format: "scalar(event_count)"
-
-  - id: "g17_top3_locations_israel_2023"
-    description: "Top 3 location_name por count de eventos en Israel 2023."
-    cypher: |
-      MATCH (e:Event)-[:AT_LOCATION]->(l:Location)
-      WHERE l.country = 'Israel' AND e.year = 2023
-      RETURN l.location_name AS location, count(DISTINCT e) AS event_count
-      ORDER BY event_count DESC
-      LIMIT 3
-    answer_format: "list((location, event_count))"
-
-  - id: "g18_european_state_actors_2023"
-    description: "State forces no-locales en 2023; revisar manualmente si alguno es europeo."
-    cypher: |
-      MATCH (a:Actor)-[:HAS_TYPE]->(:ActorType {name: 'State forces'})
-      MATCH (a)-[:INVOLVED_IN]->(e:Event)
-      WHERE e.year = 2023
-        AND NOT a.actor_name CONTAINS 'Israel'
-      RETURN DISTINCT a.actor_name AS state_actor, count(DISTINCT e) AS events
-      ORDER BY events DESC
-    answer_format: "list(state_actor) — inspección manual; esperado: ninguno europeo"
+      WHERE l.admin1 = 'Tel Aviv' AND e.year = 2023
+      RETURN count(DISTINCT a) AS n
+    answer_format: "scalar(n)"
