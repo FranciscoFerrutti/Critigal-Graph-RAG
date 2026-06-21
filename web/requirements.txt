@@ -1,0 +1,6 @@
+# Dependencias mínimas del proxy web (Vercel). NO incluye torch/langchain:
+# app.py solo reenvía requests al agente remoto en Render.
+fastapi>=0.111
+requests>=2.31
+python-dotenv>=1.0
+pydantic
