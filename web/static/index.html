@@ -16,8 +16,12 @@
       --bot-bubble: #e9ecf1;
       --bot-text: #1f2430;
       --accent: #2563eb;
+      --accent-soft: #e8f0fe;
+      --source: #0f766e;
+      --source-soft: #d7f0ec;
       --error: #b91c1c;
       --radius: 14px;
+      --drawer-width: 340px;
     }
 
     * { box-sizing: border-box; }
@@ -30,6 +34,7 @@
       display: flex;
       justify-content: center;
       height: 100vh;
+      overflow: hidden;
     }
 
     .chat-app {
@@ -43,15 +48,15 @@
       border-right: 1px solid var(--border);
     }
 
-    header {
+    header.app-header {
       padding: 14px 20px;
       border-bottom: 1px solid var(--border);
     }
-    header h1 {
+    header.app-header h1 {
       margin: 0;
       font-size: 1.05rem;
     }
-    header p {
+    header.app-header p {
       margin: 2px 0 0;
       font-size: 0.8rem;
       color: var(--text-muted);
@@ -66,8 +71,16 @@
       gap: 10px;
     }
 
+    .turn {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-width: 82%;
+    }
+    .turn.user { align-self: flex-end; align-items: flex-end; }
+    .turn.assistant { align-self: flex-start; align-items: flex-start; }
+
     .bubble {
-      max-width: 78%;
       padding: 10px 14px;
       border-radius: var(--radius);
       line-height: 1.45;
@@ -75,26 +88,55 @@
       white-space: pre-wrap;
       word-wrap: break-word;
     }
-    .bubble.user {
-      align-self: flex-end;
+    .turn.user .bubble {
       background: var(--user-bubble);
       color: var(--user-text);
       border-bottom-right-radius: 4px;
     }
-    .bubble.assistant {
-      align-self: flex-start;
+    .turn.assistant .bubble {
       background: var(--bot-bubble);
       color: var(--bot-text);
       border-bottom-left-radius: 4px;
     }
-    .bubble.error {
+    .turn.error .bubble {
       align-self: flex-start;
       background: #fde8e8;
       color: var(--error);
       border: 1px solid #f5c2c2;
     }
 
-    /* Indicador de typing: tres puntos animados */
+    /* Fila de metadatos bajo cada respuesta del asistente */
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 0 2px;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.75rem;
+      padding: 3px 9px;
+      border-radius: 999px;
+      line-height: 1.4;
+    }
+    .chip-source {
+      background: var(--source-soft);
+      color: var(--source);
+      font-weight: 600;
+    }
+    .chip-source .glyph { font-size: 0.85rem; }
+    .chip-detail {
+      background: var(--accent-soft);
+      color: var(--accent);
+      border: none;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .chip-detail:hover { filter: brightness(0.96); }
+
+    /* Indicador de typing */
     .typing {
       align-self: flex-start;
       background: var(--bot-bubble);
@@ -103,6 +145,7 @@
       padding: 14px 16px;
       display: flex;
       gap: 5px;
+      width: fit-content;
     }
     .typing span {
       width: 7px;
@@ -144,21 +187,142 @@
       color: #fff;
       cursor: pointer;
     }
-    #send:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
+    #send:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Drawer lateral de fuentes/citas */
+    #drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: var(--drawer-width);
+      max-width: 90vw;
+      height: 100vh;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      box-shadow: -8px 0 24px rgba(0, 0, 0, 0.08);
+      transform: translateX(100%);
+      transition: transform 0.25s ease;
+      display: flex;
+      flex-direction: column;
+      z-index: 20;
+    }
+    #drawer.open { transform: translateX(0); }
+
+    .drawer-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .drawer-header h2 {
+      margin: 0;
+      font-size: 0.9rem;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    .drawer-close {
+      background: none;
+      border: none;
+      font-size: 1.2rem;
+      line-height: 1;
+      cursor: pointer;
+      color: var(--text-muted);
+      padding: 4px;
+    }
+    .drawer-close:hover { color: var(--text); }
+
+    .drawer-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 16px;
+    }
+    .drawer-empty {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      font-style: italic;
+    }
+
+    .citation {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+    }
+    .citation-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .citation-id {
+      font-weight: 600;
+      font-size: 0.82rem;
+      color: var(--accent);
+    }
+    .citation-score {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+    .citation-place {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+    .citation-notes {
+      font-size: 0.82rem;
+      line-height: 1.4;
+      color: var(--text);
+    }
+
+    .drawer-footer {
+      border-top: 1px solid var(--border);
+      padding: 12px 16px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+    .drawer-footer .label { text-transform: uppercase; letter-spacing: 0.03em; }
+    .drawer-footer code {
+      background: var(--bg);
+      padding: 1px 5px;
+      border-radius: 5px;
+      font-size: 0.72rem;
+    }
+
+    #overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.25);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+      z-index: 15;
+    }
+    #overlay.open { opacity: 1; pointer-events: auto; }
+
+    .limit-note {
+      align-self: center;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      font-style: italic;
+      padding: 6px 0;
     }
   </style>
 </head>
 <body>
   <div class="chat-app">
-    <header>
+    <header class="app-header">
       <h1>CriticalGraphRAG</h1>
       <p>Chatbot sobre el conflicto Israel/Palestina (datos ACLED 2023)</p>
     </header>
 
     <div id="messages">
-      <div class="bubble assistant">Hola, soy el asistente de CriticalGraphRAG. Preguntame sobre eventos del conflicto Israel/Palestina en 2023: conteos, actores, lugares o descripciones de lo ocurrido.</div>
+      <div class="turn assistant">
+        <div class="bubble">Hola, soy el asistente de CriticalGraphRAG. Preguntame sobre eventos del conflicto Israel/Palestina en 2023: conteos, actores, lugares o descripciones de lo ocurrido. Cada respuesta indica su fuente de datos; si querés, podés abrir el panel lateral para ver los eventos concretos que la fundamentan.</div>
+      </div>
     </div>
 
     <form id="chat-form">
@@ -167,22 +331,111 @@
     </form>
   </div>
 
+  <!-- Drawer lateral: fuentes/citas de una respuesta puntual -->
+  <div id="overlay"></div>
+  <aside id="drawer" aria-hidden="true">
+    <div class="drawer-header">
+      <h2 id="drawer-title">Fuentes</h2>
+      <button class="drawer-close" id="drawer-close" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="drawer-body" id="drawer-body"></div>
+    <div class="drawer-footer" id="drawer-footer"></div>
+  </aside>
+
   <script>
     // Sesión efímera: nueva en cada carga de página, sin persistencia.
+    // El historial vive en el DOM y se conserva hasta el refresh.
     const sessionId = crypto.randomUUID();
+    const MAX_TURNS = 100; // tope alto de consultas por sesión
+
+    let userTurns = 0;
+    // Metadatos por respuesta del asistente, indexados para abrir el drawer.
+    const responsesMeta = [];
 
     const messagesEl = document.getElementById("messages");
     const formEl = document.getElementById("chat-form");
     const inputEl = document.getElementById("input");
     const sendEl = document.getElementById("send");
+    const drawerEl = document.getElementById("drawer");
+    const drawerTitleEl = document.getElementById("drawer-title");
+    const drawerBodyEl = document.getElementById("drawer-body");
+    const drawerFooterEl = document.getElementById("drawer-footer");
+    const overlayEl = document.getElementById("overlay");
 
-    function addBubble(text, role) {
-      const div = document.createElement("div");
-      div.className = `bubble ${role}`;
-      div.textContent = text;
-      messagesEl.appendChild(div);
+    function scrollToBottom() {
       messagesEl.scrollTop = messagesEl.scrollHeight;
-      return div;
+    }
+
+    function addUserBubble(text) {
+      const turn = document.createElement("div");
+      turn.className = "turn user";
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.textContent = text;
+      turn.appendChild(bubble);
+      messagesEl.appendChild(turn);
+      scrollToBottom();
+    }
+
+    function addErrorBubble(text) {
+      const turn = document.createElement("div");
+      turn.className = "turn error";
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.textContent = text;
+      turn.appendChild(bubble);
+      messagesEl.appendChild(turn);
+      scrollToBottom();
+    }
+
+    // Respuesta del asistente + fila de metadatos (fuente + acceso a detalles).
+    function addAssistantTurn(data) {
+      const turn = document.createElement("div");
+      turn.className = "turn assistant";
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.textContent = data.response || "(respuesta vacía)";
+      turn.appendChild(bubble);
+
+      const sources = Array.isArray(data.data_sources) ? data.data_sources : [];
+      const citations = Array.isArray(data.citations) ? data.citations : [];
+      const hasDetail = citations.length > 0 || data.used_tool || data.latency_ms != null;
+
+      if (sources.length > 0 || hasDetail) {
+        const meta = document.createElement("div");
+        meta.className = "meta-row";
+
+        if (sources.length > 0) {
+          const chip = document.createElement("span");
+          chip.className = "chip chip-source";
+          chip.innerHTML = `<span class="glyph">⬡</span> Fuente: ${escapeHtml(sources.join(", "))}`;
+          meta.appendChild(chip);
+        }
+
+        if (hasDetail) {
+          const idx = responsesMeta.push({
+            citations,
+            used_tool: data.used_tool || null,
+            latency_ms: data.latency_ms ?? null,
+            sources,
+          }) - 1;
+
+          const btn = document.createElement("button");
+          btn.className = "chip chip-detail";
+          btn.type = "button";
+          btn.textContent = citations.length > 0
+            ? `${citations.length} ${citations.length === 1 ? "fuente" : "fuentes"} ▸`
+            : "detalles ▸";
+          btn.addEventListener("click", () => openDrawer(idx));
+          meta.appendChild(btn);
+        }
+
+        turn.appendChild(meta);
+      }
+
+      messagesEl.appendChild(turn);
+      scrollToBottom();
     }
 
     function showTyping() {
@@ -190,7 +443,7 @@
       div.className = "typing";
       div.innerHTML = "<span></span><span></span><span></span>";
       messagesEl.appendChild(div);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
+      scrollToBottom();
       return div;
     }
 
@@ -199,12 +452,114 @@
       inputEl.disabled = busy;
     }
 
+    function escapeHtml(str) {
+      const div = document.createElement("div");
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function formatLatency(ms) {
+      if (ms == null) return null;
+      return ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${ms} ms`;
+    }
+
+    // ----- Drawer -----
+    function openDrawer(idx) {
+      const meta = responsesMeta[idx];
+      if (!meta) return;
+
+      const n = meta.citations.length;
+      drawerTitleEl.textContent = n > 0 ? `Fuentes (${n})` : "Detalles";
+
+      drawerBodyEl.innerHTML = "";
+      if (n === 0) {
+        const empty = document.createElement("p");
+        empty.className = "drawer-empty";
+        empty.textContent = "Esta respuesta no se apoya en eventos puntuales (por ejemplo, una agregación o conteo).";
+        drawerBodyEl.appendChild(empty);
+      } else {
+        for (const c of meta.citations) {
+          drawerBodyEl.appendChild(renderCitation(c));
+        }
+      }
+
+      // Pie discreto: método (tool) + latencia.
+      const parts = [];
+      if (meta.used_tool) parts.push(`<span class="label">método:</span> <code>${escapeHtml(meta.used_tool)}</code>`);
+      const lat = formatLatency(meta.latency_ms);
+      if (lat) parts.push(`<span class="label">latencia:</span> ${lat}`);
+      drawerFooterEl.innerHTML = parts.join(" &middot; ");
+      drawerFooterEl.style.display = parts.length ? "block" : "none";
+
+      drawerEl.classList.add("open");
+      drawerEl.setAttribute("aria-hidden", "false");
+      overlayEl.classList.add("open");
+    }
+
+    function renderCitation(c) {
+      const card = document.createElement("div");
+      card.className = "citation";
+
+      const head = document.createElement("div");
+      head.className = "citation-head";
+      const id = document.createElement("span");
+      id.className = "citation-id";
+      id.textContent = `Evt ${c.event_id ?? "—"}`;
+      head.appendChild(id);
+      if (c.event_date) {
+        const date = document.createElement("span");
+        date.className = "citation-score";
+        date.textContent = c.event_date;
+        head.appendChild(date);
+      }
+      card.appendChild(head);
+
+      const place = [c.admin1, c.country].filter(Boolean).join(", ");
+      const scoreTxt = (c.score != null) ? `similitud ${Number(c.score).toFixed(2)}` : "";
+      if (place || scoreTxt) {
+        const sub = document.createElement("div");
+        sub.className = "citation-place";
+        sub.textContent = [place, scoreTxt].filter(Boolean).join(" · ");
+        card.appendChild(sub);
+      }
+
+      if (c.notes) {
+        const notes = document.createElement("div");
+        notes.className = "citation-notes";
+        notes.textContent = c.notes;
+        card.appendChild(notes);
+      }
+      return card;
+    }
+
+    function closeDrawer() {
+      drawerEl.classList.remove("open");
+      drawerEl.setAttribute("aria-hidden", "true");
+      overlayEl.classList.remove("open");
+    }
+
+    document.getElementById("drawer-close").addEventListener("click", closeDrawer);
+    overlayEl.addEventListener("click", closeDrawer);
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
+
+    // ----- Envío -----
     formEl.addEventListener("submit", async (e) => {
       e.preventDefault();
       const message = inputEl.value.trim();
       if (!message || sendEl.disabled) return;
 
-      addBubble(message, "user");
+      if (userTurns >= MAX_TURNS) {
+        const note = document.createElement("div");
+        note.className = "limit-note";
+        note.textContent = `Llegaste al máximo de ${MAX_TURNS} consultas por sesión. Recargá la página para empezar de nuevo.`;
+        messagesEl.appendChild(note);
+        scrollToBottom();
+        setBusy(true);
+        return;
+      }
+      userTurns++;
+
+      addUserBubble(message);
       inputEl.value = "";
       setBusy(true);
       const typingEl = showTyping();
@@ -222,17 +577,17 @@
           let detail = `Error ${res.status}`;
           try {
             const err = await res.json();
-            if (err.detail) detail = typeof err.detail === "string" ? err.detail : detail;
+            if (err.detail && typeof err.detail === "string") detail = err.detail;
           } catch (_) { /* body no-JSON: queda el mensaje genérico */ }
-          addBubble(detail, "error");
+          addErrorBubble(detail);
           return;
         }
 
         const data = await res.json();
-        addBubble(data.response, "assistant");
+        addAssistantTurn(data);
       } catch (err) {
         typingEl.remove();
-        addBubble("No se pudo contactar al servidor. Verificá que el backend esté corriendo.", "error");
+        addErrorBubble("No se pudo contactar al servidor. Verificá que el backend esté corriendo.");
       } finally {
         setBusy(false);
         inputEl.focus();
