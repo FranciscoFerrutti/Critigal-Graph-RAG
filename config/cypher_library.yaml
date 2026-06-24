@@ -113,7 +113,7 @@ queries:
       LIMIT $top_n
 
   - id: "events_by_event_type_period"
-    description: "Cuenta eventos de un tipo específico (event_type primario o sub_event_type) en un rango de fechas y región."
+    description: "Cuenta eventos de un tipo específico (event_type primario o sub_event_type) en un país, rango de fechas y región opcional."
     when_to_use: |
       Preguntas tipo "¿Cuántos eventos de tipo 'Battles' hubo en Israel en 2023?"
       o "¿Cuántos 'Explosions/Remote violence' en Gaza entre octubre y diciembre 2023?".
@@ -122,6 +122,10 @@ queries:
       - name: "event_type_name"
         type: "string"
         description: "Nombre del tipo o subtipo (ej: 'Battles', 'Armed clash')"
+        required: true
+      - name: "country"
+        type: "string"
+        description: "País (Location.country, ej: 'Israel')"
         required: true
       - name: "start_date"
         type: "string"
@@ -133,19 +137,19 @@ queries:
         required: true
       - name: "admin1"
         type: "string"
-        description: "Región opcional para filtrar (si se omite, cuenta a nivel país)"
+        description: "Región opcional para filtrar dentro del país (si se omite, cuenta todo el país)"
         required: false
         default: null
     returns: "event_count: INT"
     cypher: |
       MATCH (e:Event)-[:OF_TYPE]->(sub:EventType)
       OPTIONAL MATCH (sub)-[:SUBTYPE_OF]->(primary:EventType)
-      WITH e, sub, primary
+      MATCH (e)-[:AT_LOCATION]->(l:Location)
       WHERE (sub.name = $event_type_name OR primary.name = $event_type_name)
         AND e.event_date >= $start_date
         AND e.event_date <= $end_date
-      OPTIONAL MATCH (e)-[:AT_LOCATION]->(l:Location)
-      WHERE $admin1 IS NULL OR l.admin1 = $admin1
+        AND l.country = $country
+        AND ($admin1 IS NULL OR l.admin1 = $admin1)
       RETURN count(DISTINCT e) AS event_count
 
   - id: "actors_co_occurring_with"

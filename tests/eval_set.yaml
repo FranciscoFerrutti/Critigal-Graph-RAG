@@ -1,0 +1,84 @@
+# Conjunto de evaluación del Incremento 04.
+#
+# Fuente única de verdad para el notebook `notebooks/04_evaluacion_kpis.ipynb`.
+# 9 preguntas balanceadas (3 por cada tool del agente).
+#
+# Campos:
+#   id              slug único.
+#   tool_target     tool esperado: cypher_query | text2cypher | similarity_search.
+#   tipo            factual_numeric (scoring por número) | descriptive (recall sobre keywords).
+#   pregunta        texto enviado a la API.
+#   expected        respuesta canónica. Para factual_numeric: número como string.
+#                   Para descriptive: keywords separadas por espacio (recall sobre tokens).
+#   gold_query_id   (solo factual) entrada de `tests/gold_cypher.yaml` que deriva el expected.
+
+questions:
+
+  # --- cypher_query (3) — preguntas factuales con query predefinida en el catálogo ---
+
+  - id: cq1
+    tool_target: cypher_query
+    tipo: factual_numeric
+    pregunta: "¿Cuántos eventos registró ACLED en Israel durante octubre de 2023?"
+    expected: "768"
+    gold_query_id: g01_count_events_israel_oct2023
+
+  - id: cq2
+    tool_target: cypher_query
+    tipo: factual_numeric
+    pregunta: "¿Cuántas fatalidades totales se registraron en Israel durante 2023?"
+    expected: "1773"
+    gold_query_id: g05_fatalities_israel_2023
+
+  - id: cq3
+    tool_target: cypher_query
+    tipo: factual_numeric
+    pregunta: "¿Cuántos eventos registró ACLED en el distrito de Tel Aviv durante todo el año 2023?"
+    expected: "610"
+    gold_query_id: g04_events_telaviv_2023
+
+  # --- text2cypher (3) — preguntas NO cubiertas por el catálogo; fuerzan Cypher dinámico ---
+
+  - id: t2c1
+    tool_target: text2cypher
+    tipo: factual_numeric
+    # Distinct count sobre event_date no está en el catálogo.
+    pregunta: "¿En cuántos días distintos de 2023 hubo al menos un evento en Israel?"
+    expected: "347"
+    gold_query_id: g20_distinct_event_days_israel_2023
+
+  - id: t2c2
+    tool_target: text2cypher
+    tipo: factual_numeric
+    # Filtro por fatalities=0 no está en el catálogo.
+    pregunta: "¿Cuántos eventos en Israel en 2023 tuvieron exactamente 0 fatalidades?"
+    expected: "4064"
+    gold_query_id: g19_zero_fatalities_israel_2023
+
+  - id: t2c3
+    tool_target: text2cypher
+    tipo: factual_numeric
+    # Distinct actors filtrado por admin1 no está en el catálogo.
+    pregunta: "¿Cuántos actores únicos participaron en eventos en el distrito de Tel Aviv durante 2023?"
+    expected: "74"
+    gold_query_id: g21_distinct_actors_telaviv_2023
+
+  # --- similarity_search (3) — preguntas descriptivas; expected = keywords del contenido narrativo ---
+
+  - id: ss1
+    tool_target: similarity_search
+    tipo: descriptive
+    pregunta: "¿Cómo se describen los ataques con cohetes registrados en Israel en 2023?"
+    expected: "cohetes Hamas Gaza Sderot Ashkelon disparados Israel"
+
+  - id: ss2
+    tool_target: similarity_search
+    tipo: descriptive
+    pregunta: "Describí incidentes que ocurrieron en zonas fronterizas con Líbano"
+    expected: "Hezbollah frontera norte Líbano antitanque cohetes HaZafon"
+
+  - id: ss3
+    tool_target: similarity_search
+    tipo: descriptive
+    pregunta: "¿Sobre qué temas o reclamos se manifestaron los protestantes en Tel Aviv durante 2023?"
+    expected: "protestas Tel Aviv reforma judicial manifestantes gobierno Netanyahu"

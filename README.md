@@ -172,7 +172,8 @@ CriticalGraphRAG/
 │   └── 05_load_neo4j.py          # carga Neo4j
 ├── web/                          # FastAPI + UI
 ├── tests/
-│   └── cgrag_evaluation_questions.csv   # 50 preguntas de evaluación (ES)
+│   ├── eval_set.yaml                 # 9 preguntas de evaluación (3 por tool)
+│   └── gold_cypher.yaml              # Cypher oráculo para derivar `expected`
 ├── requirements.txt
 ├── docker-compose.yaml
 └── .env.example
@@ -219,7 +220,7 @@ Editar `config/cypher_library.yaml` sin tocar código. Cada entrada requiere:
 pytest tests/
 ```
 
-El conjunto de evaluación (`tests/cgrag_evaluation_questions.csv`) contiene 50 preguntas en español y es la especificación funcional del sistema.
+El conjunto de evaluación (`tests/eval_set.yaml`) contiene 9 preguntas balanceadas (3 por tool del agente). Se valida en `notebooks/04_evaluacion_kpis.ipynb` contra la API deployada; ground truth de las factuales en `tests/gold_cypher.yaml`.
 
 ---
 
